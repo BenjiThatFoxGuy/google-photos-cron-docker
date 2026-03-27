@@ -21,6 +21,23 @@ function configure_cron() {
 }
 
 ########################################
+# Return 0 if the cron expression contains at least one interval-style
+# step field (*/N), meaning it fires "once every N" units rather than at
+# a fixed point in time (e.g. "*/10 * * * *" → true; "0 * * * *" → false).
+########################################
+function cron_is_interval() {
+    local field
+    local -a cron_fields
+    read -ra cron_fields <<< "${CRON}"
+    for field in "${cron_fields[@]}"; do
+        if [[ "${field}" =~ ^\*/[0-9]+$ ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+########################################
 # Add credentials from env vars if provided,
 # and set the active account if GOTOHP_EMAIL is set.
 ########################################
@@ -68,6 +85,16 @@ if [[ "$1" == "backup" ]]; then
     color yellow "Running a one-shot backup (container will exit after completion)"
     bash /app/backup.sh
     exit $?
+fi
+
+# Interval-style crons (e.g. "*/10 * * * *") imply "once every N units", so
+# the first scheduled fire could be almost a full interval away.  Run an
+# immediate backup so users don't wait unnecessarily on container start.
+# Rigid crons (e.g. "0 * * * *") fire at a predictable fixed time and are
+# left to fire naturally on their own schedule.
+if cron_is_interval; then
+    color blue "Interval-style cron detected — running initial backup immediately"
+    bash /app/backup.sh
 fi
 
 color blue "Starting supercronic scheduler"
