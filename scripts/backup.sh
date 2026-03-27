@@ -3,6 +3,27 @@
 . /app/includes.sh
 
 ########################################
+# Switch the active gotohp credential for a given source/album pair.
+# Per-pair GOTOHP_EMAIL_N takes precedence; falls back to global GOTOHP_EMAIL.
+# Arguments:
+#     pair index (integer)
+# Returns:
+#     0 on success or when no switch is needed; 1 on switch failure
+########################################
+function switch_credential_for_pair() {
+    local i="$1"
+    local effective_email="${GOTOHP_EMAIL_LIST[${i}]:-${GOTOHP_EMAIL}}"
+    if [[ -n "${effective_email}" ]]; then
+        color blue "Setting active credential: ${effective_email}"
+        if ! gotohp creds set "${effective_email}"; then
+            color red "Failed to set active credential for ${SOURCE_PATHS[${i}]}: ${effective_email}"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+########################################
 # Build an array of gotohp upload flags for a given source/album pair.
 # Per-pair override variables (GOTOHP_*_N) take precedence; the global
 # GOTOHP_* values are used as defaults when no override is set.
@@ -74,14 +95,9 @@ for i in "${!SOURCE_PATHS[@]}"; do
     fi
 
     # Switch to the effective account for this pair (per-pair override > global)
-    EFFECTIVE_EMAIL="${GOTOHP_EMAIL_LIST[${i}]:-${GOTOHP_EMAIL}}"
-    if [[ -n "${EFFECTIVE_EMAIL}" ]]; then
-        color blue "Setting active credential: ${EFFECTIVE_EMAIL}"
-        if ! gotohp creds set "${EFFECTIVE_EMAIL}"; then
-            color red "Failed to set active credential for ${SOURCE}: ${EFFECTIVE_EMAIL}"
-            HAS_ERROR="TRUE"
-            continue
-        fi
+    if ! switch_credential_for_pair "${i}"; then
+        HAS_ERROR="TRUE"
+        continue
     fi
 
     build_gotohp_flags "${i}"
