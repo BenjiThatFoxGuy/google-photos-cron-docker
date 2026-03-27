@@ -54,12 +54,18 @@ services:
   #     ALBUM_NAME_0: "Camera Roll"
   #     # Override threads for this pair only
   #     GOTOHP_THREADS_0: "5"
+  #     # Per-pair credential override (optional — leave commented to use global GOTOHP_CREDS)
+  #     # GOTOHP_CREDS_0: "androidId=AAAA..."
+  #     # GOTOHP_EMAIL_0: "alice@gmail.com"
   #
   #     # Source 1 → Album 1
   #     SOURCE_PATH_1: /screenshots
   #     ALBUM_NAME_1: "Screenshots"
   #     # Override recursive for this pair only (disable sub-directory scan)
   #     GOTOHP_RECURSIVE_1: "FALSE"
+  #     # Per-pair credential override — upload pair 1 to a different Google account
+  #     # GOTOHP_CREDS_1: "androidId=BBBB..."
+  #     # GOTOHP_EMAIL_1: "bob@gmail.com"
   #
   #     # Source 2 → no album (uploaded directly to library root)
   #     SOURCE_PATH_2: /videos

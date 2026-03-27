@@ -33,6 +33,22 @@ function setup_credentials() {
             color yellow "Note: credential may already exist in config (non-fatal)"
     fi
 
+    # Register any per-pair credentials, skipping duplicates and the global credential
+    local -A _seen_creds=()
+    if [[ -n "${GOTOHP_CREDS}" ]]; then
+        _seen_creds["${GOTOHP_CREDS}"]=1
+    fi
+    local pair_cred
+    for i in "${!GOTOHP_CREDS_LIST[@]}"; do
+        pair_cred="${GOTOHP_CREDS_LIST[${i}]}"
+        if [[ -n "${pair_cred}" && -z "${_seen_creds[${pair_cred}]:-}" ]]; then
+            color blue "Adding Google Photos credentials for pair ${i}"
+            gotohp creds add "${pair_cred}" || \
+                color yellow "Note: credential may already exist in config (non-fatal)"
+            _seen_creds["${pair_cred}"]=1
+        fi
+    done
+
     if [[ -n "${GOTOHP_EMAIL}" ]]; then
         color blue "Setting active credential: ${GOTOHP_EMAIL}"
         if ! gotohp creds set "${GOTOHP_EMAIL}"; then

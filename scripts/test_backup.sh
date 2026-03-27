@@ -31,12 +31,18 @@ HANG_TEST_TIMEOUT=10
 #   $2  first source path  (the one we expect to be skipped/empty)
 #   $3  second source path (the one we expect to be uploaded)
 #   $4  global GOTOHP_RECURSIVE value (optional; default: "TRUE")
+#   $5  email for pair 0 override (optional; default: "")
+#   $6  email for pair 1 override (optional; default: "")
+#   $7  global GOTOHP_EMAIL value (optional; default: "")
 ########################################
 setup_env() {
     local test_name="$1"
     local first_source="$2"
     local second_source="$3"
     local gotohp_recursive="${4:-TRUE}"
+    local pair0_email="${5:-}"
+    local pair1_email="${6:-}"
+    local global_email="${7:-}"
 
     local env_dir="${SCRATCH}/${test_name}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
@@ -76,6 +82,8 @@ function init_env() {
     GOTOHP_DISABLE_FILTER_LIST=("" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "")
     GOTOHP_LOG_LEVEL_LIST=("" "")
+    GOTOHP_CREDS_LIST=("" "")
+    GOTOHP_EMAIL_LIST=("${pair0_email}" "${pair1_email}")
     GOTOHP_THREADS="3"
     GOTOHP_RECURSIVE="${gotohp_recursive}"
     GOTOHP_FORCE="FALSE"
@@ -83,6 +91,7 @@ function init_env() {
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_EMAIL="${global_email}"
 }
 HEREDOC
 
@@ -302,6 +311,86 @@ elif ! grep -q "${FILES7}" "${GOTOHP_CALLS}" 2>/dev/null; then
     cat "${SCRATCH}/t7_out.txt"
 else
     pass "Test 7: non-media-only source skipped, media source uploaded"
+fi
+
+########################################
+# Test 8: per-pair email override → gotohp creds set called with pair email
+########################################
+echo "--- Test 8: per-pair email override — creds set called before pair upload ---"
+
+FILES8_0="${SCRATCH}/t8_pair0"
+FILES8_1="${SCRATCH}/t8_pair1"
+mkdir -p "${FILES8_0}" "${FILES8_1}"
+echo "photo" > "${FILES8_0}/photo.jpg"
+echo "photo" > "${FILES8_1}/photo.jpg"
+
+# Pair 1 has its own email override; global email is alice@example.com
+# args: test_name first_source second_source recursive pair0_email pair1_email global_email
+setup_env "t8" "${FILES8_0}" "${FILES8_1}" "TRUE" "" "bob@example.com" "alice@example.com"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t8_out.txt" 2>&1 || RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 8: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t8_out.txt"
+elif ! grep -q "creds set bob@example.com" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 8: gotohp creds set was NOT called with the per-pair email (bob@example.com)"
+    cat "${SCRATCH}/t8_out.txt"
+elif ! grep -q "upload ${FILES8_1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 8: gotohp upload was NOT called for pair 1 source"
+    cat "${SCRATCH}/t8_out.txt"
+else
+    # Verify creds set for pair 1 appears before the upload for pair 1
+    CREDS_LINE=$(grep -n "creds set bob@example.com" "${GOTOHP_CALLS}" | head -1 | cut -d: -f1)
+    UPLOAD_LINE=$(grep -n "upload ${FILES8_1}" "${GOTOHP_CALLS}" | head -1 | cut -d: -f1)
+    if [[ -n "${CREDS_LINE}" && -n "${UPLOAD_LINE}" && "${CREDS_LINE}" -lt "${UPLOAD_LINE}" ]]; then
+        pass "Test 8: per-pair creds set called before pair 1 upload"
+    else
+        fail "Test 8: creds set did not appear before upload for pair 1"
+        cat "${SCRATCH}/t8_out.txt"
+    fi
+fi
+
+########################################
+# Test 9: per-pair creds set failure → pair skipped, exit code non-zero,
+#         remaining pairs still processed.
+########################################
+echo "--- Test 9: creds set failure → pair skipped, HAS_ERROR set ---"
+
+FILES9_0="${SCRATCH}/t9_pair0"
+FILES9_1="${SCRATCH}/t9_pair1"
+mkdir -p "${FILES9_0}" "${FILES9_1}"
+echo "photo" > "${FILES9_0}/photo.jpg"
+echo "photo" > "${FILES9_1}/photo.jpg"
+
+# Pair 0 has a per-pair email; global email is empty for pair 1
+# args: test_name first_source second_source recursive pair0_email pair1_email global_email
+setup_env "t9" "${FILES9_0}" "${FILES9_1}" "TRUE" "fail@example.com" "" ""
+
+# Replace gotohp mock: exit 1 when called with "creds set fail@example.com"
+cat > "${SCRATCH}/t9/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == "creds set fail@example.com" ]]; then
+    exit 1
+fi
+EOF
+chmod +x "${SCRATCH}/t9/bin/gotohp"
+
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t9_out.txt" 2>&1 || RC=$?
+
+if [[ $RC -eq 0 ]]; then
+    fail "Test 9: backup.sh should have exited non-zero due to creds set failure"
+    cat "${SCRATCH}/t9_out.txt"
+elif grep -q "upload ${FILES9_0}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 9: pair 0 should have been skipped after creds set failure"
+    cat "${SCRATCH}/t9_out.txt"
+elif ! grep -q "upload ${FILES9_1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 9: pair 1 (no email override) should still have been uploaded"
+    cat "${SCRATCH}/t9_out.txt"
+else
+    pass "Test 9: creds set failure skipped pair 0; pair 1 still uploaded; exit non-zero"
 fi
 
 ########################################
