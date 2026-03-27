@@ -36,6 +36,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Authenticate with Docker Hub before pulling any infrastructure images
+      # (setup-qemu-action and setup-buildx-action both pull from docker.io).
+      # Without this the shared GitHub Actions runner IP gets rate-limited.
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       # Set up QEMU so we can cross-compile for arm64
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
