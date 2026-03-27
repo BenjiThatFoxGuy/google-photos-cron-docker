@@ -65,10 +65,12 @@ RUN if ! grep -q '"os"' cli.go; then \
         && mv /tmp/cli.go cli.go; \
     fi \
     && sed -i 's|p := tea.NewProgram(model)|p := tea.NewProgram(model, tea.WithInput(os.Stdin))|' cli.go \
-    && grep -q '"os"' cli.go \
-        || { echo 'Error: "os" import not found in cli.go after patch'; exit 1; } \
-    && grep -q 'tea.WithInput(os.Stdin)' cli.go \
-        || { echo 'Error: tea.WithInput(os.Stdin) not found in cli.go after patch'; exit 1; }
+    && if ! grep -q '"os"' cli.go; then \
+           echo 'Error: "os" import not found in cli.go after patch'; exit 1; \
+       fi \
+    && if ! grep -q 'tea.WithInput(os.Stdin)' cli.go; then \
+           echo 'Error: tea.WithInput(os.Stdin) not found in cli.go after patch'; exit 1; \
+       fi
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \
