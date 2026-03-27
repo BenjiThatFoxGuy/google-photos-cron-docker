@@ -274,7 +274,37 @@ else
 fi
 
 ########################################
-# Summary
+# Test 7: source contains only non-media files (.DS_Store, desktop.ini) → skipped
+# (Reproduces the VRChat scenario: gotohp's extension filter would reject all
+#  files, so its TUI would hang.  The pre-flight check must mirror the filter.)
+########################################
+echo "--- Test 7: source has only non-media files (.DS_Store / desktop.ini) → skipped ---"
+
+STRAY="${SCRATCH}/t7_stray"
+FILES7="${SCRATCH}/t7_files"
+mkdir -p "${STRAY}" "${FILES7}"
+echo "data"  > "${STRAY}/.DS_Store"       # macOS metadata — not a media file
+echo "data"  > "${STRAY}/desktop.ini"     # Windows metadata — not a media file
+echo "photo" > "${FILES7}/photo.jpg"
+
+setup_env "t7" "${STRAY}" "${FILES7}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t7_out.txt" 2>&1 || RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 7: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t7_out.txt"
+elif grep -q "${STRAY}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 7: gotohp was called for source with only non-media files"
+    cat "${SCRATCH}/t7_out.txt"
+elif ! grep -q "${FILES7}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 7: gotohp was NOT called for the valid media source"
+    cat "${SCRATCH}/t7_out.txt"
+else
+    pass "Test 7: non-media-only source skipped, media source uploaded"
+fi
+
+########################################
 ########################################
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
