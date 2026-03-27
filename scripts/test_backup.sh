@@ -76,6 +76,8 @@ function init_env() {
     GOTOHP_DISABLE_FILTER_LIST=("" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "")
     GOTOHP_LOG_LEVEL_LIST=("" "")
+    GOTOHP_CREDS_LIST=("" "")
+    GOTOHP_EMAIL_LIST=("" "")
     GOTOHP_THREADS="3"
     GOTOHP_RECURSIVE="${gotohp_recursive}"
     GOTOHP_FORCE="FALSE"
@@ -83,6 +85,7 @@ function init_env() {
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_EMAIL=""
 }
 HEREDOC
 

@@ -104,6 +104,8 @@ function get_source_album_list() {
     GOTOHP_DISABLE_FILTER_LIST=()
     GOTOHP_DATE_FROM_FILENAME_LIST=()
     GOTOHP_LOG_LEVEL_LIST=()
+    GOTOHP_CREDS_LIST=()
+    GOTOHP_EMAIL_LIST=()
 
     local i=0
     local SOURCE_PATH_X_REFER
@@ -130,6 +132,8 @@ function get_source_album_list() {
         local DISABLE_FILTER_X="GOTOHP_DISABLE_FILTER_${i}"
         local DATE_FROM_FILENAME_X="GOTOHP_DATE_FROM_FILENAME_${i}"
         local LOG_LEVEL_X="GOTOHP_LOG_LEVEL_${i}"
+        local CREDS_X="GOTOHP_CREDS_${i}"
+        local EMAIL_X="GOTOHP_EMAIL_${i}"
 
         get_env "${THREADS_X}"
         get_env "${RECURSIVE_X}"
@@ -138,6 +142,8 @@ function get_source_album_list() {
         get_env "${DISABLE_FILTER_X}"
         get_env "${DATE_FROM_FILENAME_X}"
         get_env "${LOG_LEVEL_X}"
+        get_env "${CREDS_X}"
+        get_env "${EMAIL_X}"
 
         GOTOHP_THREADS_LIST+=("${!THREADS_X}")
         GOTOHP_RECURSIVE_LIST+=("${!RECURSIVE_X}")
@@ -146,6 +152,8 @@ function get_source_album_list() {
         GOTOHP_DISABLE_FILTER_LIST+=("${!DISABLE_FILTER_X}")
         GOTOHP_DATE_FROM_FILENAME_LIST+=("${!DATE_FROM_FILENAME_X}")
         GOTOHP_LOG_LEVEL_LIST+=("${!LOG_LEVEL_X}")
+        GOTOHP_CREDS_LIST+=("${!CREDS_X}")
+        GOTOHP_EMAIL_LIST+=("${!EMAIL_X}")
 
         ((i++))
     done
@@ -235,6 +243,8 @@ function init_env() {
         [[ -n "${GOTOHP_DISABLE_FILTER_LIST[${i}]}" ]]     && color yellow "  GOTOHP_DISABLE_FILTER_${i}: ${GOTOHP_DISABLE_FILTER_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]}" ]] && color yellow "  GOTOHP_DATE_FROM_FILENAME_${i}: ${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_LOG_LEVEL_LIST[${i}]}" ]]          && color yellow "  GOTOHP_LOG_LEVEL_${i}: ${GOTOHP_LOG_LEVEL_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_CREDS_LIST[${i}]}" ]]              && color yellow "  GOTOHP_CREDS_${i}: <set> (override)"
+        [[ -n "${GOTOHP_EMAIL_LIST[${i}]}" ]]              && color yellow "  GOTOHP_EMAIL_${i}: ${GOTOHP_EMAIL_LIST[${i}]} (override)"
     done
     color yellow "========================================"
 }

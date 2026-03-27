@@ -66,6 +66,9 @@ docker compose run --rm photos-backup backup
 | `GOTOHP_CREDS`  | —       | Credential string (`androidId=...`) from your Android device |
 | `GOTOHP_EMAIL`  | —       | Active account email or partial match (optional if only one credential is stored) |
 
+Per-pair credential overrides (`GOTOHP_CREDS_N` / `GOTOHP_EMAIL_N`) are also
+supported — see [Per-pair credential overrides](#per-pair-credential-overrides).
+
 ### Source / Album pairs
 
 Define a single backup job with the shorthand variables, or multiple jobs with
@@ -114,6 +117,38 @@ GOTOHP_THREADS_0: "8"      # more threads for SOURCE_PATH_0 (e.g. camera roll)
 GOTOHP_THREADS_1: "1"      # fewer threads for SOURCE_PATH_1 (e.g. screenshots)
 ```
 
+### Per-pair credential overrides
+
+Each source/album pair can optionally use different Google Photos credentials.
+Set `GOTOHP_CREDS_N` and `GOTOHP_EMAIL_N` for any pair to upload it to a
+different Google account.  Pairs without a per-pair override fall back to the
+global `GOTOHP_CREDS` / `GOTOHP_EMAIL`.
+
+| Variable          | Description |
+|-------------------|-------------|
+| `GOTOHP_CREDS_N`  | Credential string (`androidId=...`) for pair N |
+| `GOTOHP_EMAIL_N`  | Active account email for pair N (used to select the credential before upload) |
+
+Both variables support the `_FILE` suffix for secret injection (e.g.
+`GOTOHP_CREDS_0_FILE`, `GOTOHP_EMAIL_0_FILE`).
+
+Example — two folders uploaded to two different Google accounts:
+
+```yaml
+# Global credential (used by any pair without a per-pair override)
+GOTOHP_CREDS:   "androidId=AAAA..."
+GOTOHP_EMAIL:   "alice@gmail.com"
+
+SOURCE_PATH_0:  /alice-photos
+ALBUM_NAME_0:   "Alice Backup"
+# GOTOHP_CREDS_0 / GOTOHP_EMAIL_0 omitted → uses global alice@gmail.com
+
+SOURCE_PATH_1:  /bob-photos
+ALBUM_NAME_1:   "Bob Backup"
+GOTOHP_CREDS_1: "androidId=BBBB..."   # Bob's credential
+GOTOHP_EMAIL_1: "bob@gmail.com"       # switch to Bob's account before uploading pair 1
+```
+
 ### Secret handling
 
 Every variable above supports a `_FILE` suffix — the container will read the
@@ -125,6 +160,9 @@ environment:
 secrets:
   - gotohp_creds
 ```
+
+Per-pair credential variables follow the same convention
+(e.g. `GOTOHP_CREDS_0_FILE`, `GOTOHP_EMAIL_1_FILE`).
 
 Variables can also be placed in a `/.env` file mounted into the container.
 
@@ -198,6 +236,34 @@ volumes:
 ```yaml
 SOURCE_PATH: /organised
 ALBUM_NAME: "AUTO"   # creates one album per sub-folder
+```
+
+### Two Google accounts (per-pair credential overrides)
+
+```yaml
+services:
+  photos-backup:
+    image: ghcr.io/benjithatfoxguy/google-photos-cron-docker:latest
+    environment:
+      CRON: "0 2 * * *"
+      # Alice's credential is the global default
+      GOTOHP_CREDS:   "androidId=AAAA..."
+      GOTOHP_EMAIL:   "alice@gmail.com"
+      # Pair 0 — Alice's photos (uses global credential)
+      SOURCE_PATH_0:  /alice-photos
+      ALBUM_NAME_0:   "Alice Backup"
+      # Pair 1 — Bob's photos (per-pair credential override)
+      SOURCE_PATH_1:  /bob-photos
+      ALBUM_NAME_1:   "Bob Backup"
+      GOTOHP_CREDS_1: "androidId=BBBB..."
+      GOTOHP_EMAIL_1: "bob@gmail.com"
+    volumes:
+      - /mnt/alice:/alice-photos:ro
+      - /mnt/bob:/bob-photos:ro
+      - gotohp-config:/config
+
+volumes:
+  gotohp-config:
 ```
 
 ### Run a one-shot backup immediately

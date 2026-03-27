@@ -73,6 +73,17 @@ for i in "${!SOURCE_PATHS[@]}"; do
         continue
     fi
 
+    # Switch to the effective account for this pair (per-pair override > global)
+    EFFECTIVE_EMAIL="${GOTOHP_EMAIL_LIST[${i}]:-${GOTOHP_EMAIL}}"
+    if [[ -n "${EFFECTIVE_EMAIL}" ]]; then
+        color blue "Setting active credential: ${EFFECTIVE_EMAIL}"
+        if ! gotohp creds set "${EFFECTIVE_EMAIL}"; then
+            color red "Failed to set active credential for ${SOURCE}: ${EFFECTIVE_EMAIL}"
+            HAS_ERROR="TRUE"
+            continue
+        fi
+    fi
+
     build_gotohp_flags "${i}"
 
     # When not in recursive mode, gotohp only processes files directly inside
