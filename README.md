@@ -15,6 +15,7 @@ easy to adopt if you are already familiar with that project.
 - Scheduled uploads via cron (powered by supercronic)
 - Single **or** multiple source → album pairs per container
 - All `gotohp upload` flags exposed as environment variables
+- Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
 - Credentials stored in a Docker volume — survive container restarts
 - Secrets can be supplied via files (`_FILE` suffix) or a `.env` file
 - Tiny Alpine-based image, pure-Go binary (no webkit/GUI dependencies)
@@ -89,6 +90,30 @@ the indexed form.  Both styles may be combined.
 | `GOTOHP_DATE_FROM_FILENAME`| `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
 | `GOTOHP_LOG_LEVEL`         | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
 
+### Per-pair upload option overrides
+
+Any upload option can be overridden for a specific source/album pair by appending
+the pair index to the variable name.  If the per-pair variable is not set, the
+global value is used as the default.
+
+| Variable                      | Description |
+|-------------------------------|-------------|
+| `GOTOHP_THREADS_N`            | Override concurrent threads for pair N |
+| `GOTOHP_RECURSIVE_N`          | Override recursive flag for pair N |
+| `GOTOHP_FORCE_N`              | Override force flag for pair N |
+| `GOTOHP_DELETE_N`             | Override delete flag for pair N |
+| `GOTOHP_DISABLE_FILTER_N`     | Override disable-filter flag for pair N |
+| `GOTOHP_DATE_FROM_FILENAME_N` | Override date-from-filename flag for pair N |
+| `GOTOHP_LOG_LEVEL_N`          | Override log level for pair N |
+
+Example — use more threads for the large camera roll but fewer for screenshots:
+
+```yaml
+GOTOHP_THREADS: "3"        # default for all pairs
+GOTOHP_THREADS_0: "8"      # override for SOURCE_PATH_0 only
+GOTOHP_LOG_LEVEL_1: "debug" # override log level for SOURCE_PATH_1 only
+```
+
 ### Secret handling
 
 Every variable above supports a `_FILE` suffix — the container will read the
@@ -144,10 +169,13 @@ services:
     environment:
       CRON: "0 3 * * *"
       GOTOHP_CREDS: "androidId=..."
+      GOTOHP_THREADS: "3"          # global default
       SOURCE_PATH_0: /camera
       ALBUM_NAME_0: "Camera Roll"
+      GOTOHP_THREADS_0: "8"        # override for pair 0 only
       SOURCE_PATH_1: /screenshots
       ALBUM_NAME_1: "Screenshots"
+      GOTOHP_RECURSIVE_1: "FALSE"  # override for pair 1 only
       SOURCE_PATH_2: /videos
       # ALBUM_NAME_2 omitted — uploads to library root
     volumes:

@@ -87,16 +87,23 @@ function get_env() {
 }
 
 ########################################
-# Build SOURCE_PATHS and ALBUM_NAMES arrays from
-# SOURCE_PATH_0/ALBUM_NAME_0, SOURCE_PATH_1/ALBUM_NAME_1, …
+# Build SOURCE_PATHS, ALBUM_NAMES, and per-pair upload-option
+# override arrays from SOURCE_PATH_N/ALBUM_NAME_N/GOTOHP_*_N, …
 # Arguments:
 #     None
 # Outputs:
-#     SOURCE_PATHS and ALBUM_NAMES arrays
+#     SOURCE_PATHS, ALBUM_NAMES, and GOTOHP_*_LIST arrays
 ########################################
 function get_source_album_list() {
     SOURCE_PATHS=()
     ALBUM_NAMES=()
+    GOTOHP_THREADS_LIST=()
+    GOTOHP_RECURSIVE_LIST=()
+    GOTOHP_FORCE_LIST=()
+    GOTOHP_DELETE_LIST=()
+    GOTOHP_DISABLE_FILTER_LIST=()
+    GOTOHP_DATE_FROM_FILENAME_LIST=()
+    GOTOHP_LOG_LEVEL_LIST=()
 
     local i=0
     local SOURCE_PATH_X_REFER
@@ -114,6 +121,32 @@ function get_source_album_list() {
 
         SOURCE_PATHS+=("${!SOURCE_PATH_X_REFER}")
         ALBUM_NAMES+=("${!ALBUM_NAME_X_REFER}")
+
+        # Per-pair upload option overrides (empty string → use global default)
+        local THREADS_X="GOTOHP_THREADS_${i}"
+        local RECURSIVE_X="GOTOHP_RECURSIVE_${i}"
+        local FORCE_X="GOTOHP_FORCE_${i}"
+        local DELETE_X="GOTOHP_DELETE_${i}"
+        local DISABLE_FILTER_X="GOTOHP_DISABLE_FILTER_${i}"
+        local DATE_FROM_FILENAME_X="GOTOHP_DATE_FROM_FILENAME_${i}"
+        local LOG_LEVEL_X="GOTOHP_LOG_LEVEL_${i}"
+
+        get_env "${THREADS_X}"
+        get_env "${RECURSIVE_X}"
+        get_env "${FORCE_X}"
+        get_env "${DELETE_X}"
+        get_env "${DISABLE_FILTER_X}"
+        get_env "${DATE_FROM_FILENAME_X}"
+        get_env "${LOG_LEVEL_X}"
+
+        GOTOHP_THREADS_LIST+=("${!THREADS_X}")
+        GOTOHP_RECURSIVE_LIST+=("${!RECURSIVE_X}")
+        GOTOHP_FORCE_LIST+=("${!FORCE_X}")
+        GOTOHP_DELETE_LIST+=("${!DELETE_X}")
+        GOTOHP_DISABLE_FILTER_LIST+=("${!DISABLE_FILTER_X}")
+        GOTOHP_DATE_FROM_FILENAME_LIST+=("${!DATE_FROM_FILENAME_X}")
+        GOTOHP_LOG_LEVEL_LIST+=("${!LOG_LEVEL_X}")
+
         ((i++))
     done
 }
@@ -195,6 +228,13 @@ function init_env() {
     for i in "${!SOURCE_PATHS[@]}"; do
         local ALB="${ALBUM_NAMES[${i}]:-<none>}"
         color yellow "SOURCE[${i}]: ${SOURCE_PATHS[${i}]} → ALBUM: ${ALB}"
+        [[ -n "${GOTOHP_THREADS_LIST[${i}]}" ]]            && color yellow "  GOTOHP_THREADS_${i}: ${GOTOHP_THREADS_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_RECURSIVE_LIST[${i}]}" ]]          && color yellow "  GOTOHP_RECURSIVE_${i}: ${GOTOHP_RECURSIVE_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_FORCE_LIST[${i}]}" ]]              && color yellow "  GOTOHP_FORCE_${i}: ${GOTOHP_FORCE_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_DELETE_LIST[${i}]}" ]]             && color yellow "  GOTOHP_DELETE_${i}: ${GOTOHP_DELETE_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_DISABLE_FILTER_LIST[${i}]}" ]]     && color yellow "  GOTOHP_DISABLE_FILTER_${i}: ${GOTOHP_DISABLE_FILTER_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]}" ]] && color yellow "  GOTOHP_DATE_FROM_FILENAME_${i}: ${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_LOG_LEVEL_LIST[${i}]}" ]]          && color yellow "  GOTOHP_LOG_LEVEL_${i}: ${GOTOHP_LOG_LEVEL_LIST[${i}]} (override)"
     done
     color yellow "========================================"
 }

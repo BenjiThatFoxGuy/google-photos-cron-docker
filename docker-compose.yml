@@ -43,13 +43,21 @@ services:
   #     TIMEZONE: Europe/London
   #     GOTOHP_CREDS: "androidId=XXXXXXXXXXXXXXXXXX&..."
   #
+  #     # Global upload options (apply to all pairs unless overridden)
+  #     GOTOHP_THREADS: "3"
+  #     GOTOHP_RECURSIVE: "TRUE"
+  #
   #     # Source 0 → Album 0
   #     SOURCE_PATH_0: /camera
   #     ALBUM_NAME_0: "Camera Roll"
+  #     # Override threads for this pair only
+  #     GOTOHP_THREADS_0: "5"
   #
   #     # Source 1 → Album 1
   #     SOURCE_PATH_1: /screenshots
   #     ALBUM_NAME_1: "Screenshots"
+  #     # Override recursive for this pair only (disable sub-directory scan)
+  #     GOTOHP_RECURSIVE_1: "FALSE"
   #
   #     # Source 2 → no album (uploaded directly to library root)
   #     SOURCE_PATH_2: /videos
@@ -59,8 +67,6 @@ services:
   #     # SOURCE_PATH_3: /organised
   #     # ALBUM_NAME_3: "AUTO"
   #
-  #     GOTOHP_THREADS: "5"
-  #     GOTOHP_RECURSIVE: "TRUE"
   #   volumes:
   #     - /path/to/camera:/camera:ro
   #     - /path/to/screenshots:/screenshots:ro
