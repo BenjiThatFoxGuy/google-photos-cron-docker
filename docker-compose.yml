@@ -1,0 +1,71 @@
+services:
+  # ── Single source → single album ────────────────────────────────────────────
+  photos-backup:
+    image: ghcr.io/benjithatfoxguy/google-photos-cron-docker:latest
+    environment:
+      # Cron schedule (default: "5 * * * *")
+      CRON: "0 2 * * *"
+      # Container timezone (default: UTC)
+      TIMEZONE: America/New_York
+
+      # Google Photos credentials.
+      # Obtain the androidId=... string from your device — see README for details.
+      GOTOHP_CREDS: "androidId=XXXXXXXXXXXXXXXXXX&..."
+
+      # Optional: set the active Google account (partial email match supported).
+      # Leave commented out if you only have one credential configured.
+      # GOTOHP_EMAIL: "user@gmail.com"
+
+      # Source directory → destination album
+      SOURCE_PATH: /photos
+      ALBUM_NAME: "My Docker Backup"
+
+      # Upload options (all optional — defaults shown)
+      GOTOHP_THREADS: "3"           # concurrent upload threads
+      GOTOHP_RECURSIVE: "TRUE"      # include sub-directories
+      GOTOHP_FORCE: "FALSE"         # re-upload even if file already exists
+      GOTOHP_DELETE: "FALSE"        # delete source file after upload
+      GOTOHP_DISABLE_FILTER: "FALSE"        # upload all file types (not just media)
+      GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
+      GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
+    volumes:
+      - /path/to/your/photos:/photos:ro   # source (read-only recommended)
+      - gotohp-config:/config             # persists credentials & config
+
+  # ── Multiple sources → multiple albums ──────────────────────────────────────
+  # Uncomment and adapt the block below to back up several directories,
+  # each into its own album, from a single container.
+  #
+  # photos-backup-multi:
+  #   image: ghcr.io/benjithatfoxguy/google-photos-cron-docker:latest
+  #   environment:
+  #     CRON: "0 2 * * *"
+  #     TIMEZONE: Europe/London
+  #     GOTOHP_CREDS: "androidId=XXXXXXXXXXXXXXXXXX&..."
+  #
+  #     # Source 0 → Album 0
+  #     SOURCE_PATH_0: /camera
+  #     ALBUM_NAME_0: "Camera Roll"
+  #
+  #     # Source 1 → Album 1
+  #     SOURCE_PATH_1: /screenshots
+  #     ALBUM_NAME_1: "Screenshots"
+  #
+  #     # Source 2 → no album (uploaded directly to library root)
+  #     SOURCE_PATH_2: /videos
+  #     # ALBUM_NAME_2 intentionally omitted
+  #
+  #     # Use AUTO to create per-folder albums automatically
+  #     # SOURCE_PATH_3: /organised
+  #     # ALBUM_NAME_3: "AUTO"
+  #
+  #     GOTOHP_THREADS: "5"
+  #     GOTOHP_RECURSIVE: "TRUE"
+  #   volumes:
+  #     - /path/to/camera:/camera:ro
+  #     - /path/to/screenshots:/screenshots:ro
+  #     - /path/to/videos:/videos:ro
+  #     - gotohp-config:/config
+
+volumes:
+  gotohp-config:
