@@ -87,7 +87,7 @@ function init_env() {
 HEREDOC
 
     # Patched copy of backup.sh pointing at our mock includes.sh
-    sed "s|. /app/includes.sh|. ${env_dir}/app/includes.sh|" \
+    sed "s|^\. /app/includes\.sh$|. ${env_dir}/app/includes.sh|" \
         "$(dirname "$0")/backup.sh" > "${env_dir}/app/backup.sh"
 
     # Make gotohp mock first on PATH
@@ -106,7 +106,8 @@ mkdir -p "${EMPTY}" "${FILES}"
 echo "photo" > "${FILES}/photo.jpg"
 
 setup_env "t1" "${EMPTY}" "${FILES}"
-PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t1_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t1_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -ne 0 ]]; then
     fail "Test 1: backup.sh exited with code ${RC}"
@@ -132,7 +133,8 @@ mkdir -p "${FILES2}"
 echo "photo" > "${FILES2}/photo.jpg"
 
 setup_env "t2" "${MISSING}" "${FILES2}"
-PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t2_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t2_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -ne 0 ]]; then
     fail "Test 2: backup.sh exited with code ${RC}"
@@ -158,7 +160,8 @@ mkdir -p "${SUBDIR_SRC}/nested/deep" "${EMPTY3}"
 echo "photo" > "${SUBDIR_SRC}/nested/deep/photo.jpg"
 
 setup_env "t3" "${EMPTY3}" "${SUBDIR_SRC}"
-PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t3_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t3_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -ne 0 ]]; then
     fail "Test 3: backup.sh exited with code ${RC}"
@@ -199,7 +202,8 @@ fi
 EOF
 chmod +x "${SCRATCH}/t4/bin/gotohp"
 
-PATH="${TEST_PATH}" timeout "${HANG_TEST_TIMEOUT}" bash "${TEST_BACKUP}" > "${SCRATCH}/t4_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" timeout "${HANG_TEST_TIMEOUT}" bash "${TEST_BACKUP}" > "${SCRATCH}/t4_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -eq 124 ]]; then
     fail "Test 4: backup.sh timed out — gotohp was called on empty source (softlock!)"
@@ -225,7 +229,8 @@ echo "photo" > "${SUBDIR_ONLY}/nested/photo.jpg"  # file only in a subdir
 echo "photo" > "${FILES5}/photo.jpg"
 
 setup_env "t5" "${SUBDIR_ONLY}" "${FILES5}" "FALSE"
-PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t5_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t5_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -ne 0 ]]; then
     fail "Test 5: backup.sh exited with code ${RC}"
@@ -252,7 +257,8 @@ echo "photo" > "${MIXED}/direct.jpg"          # direct file  → should be picke
 echo "photo" > "${MIXED}/subdir/nested.jpg"   # file in subdir → ignored by gotohp
 
 setup_env "t6" "${MIXED}" "${EMPTY6}" "FALSE"
-PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t6_out.txt" 2>&1; RC=$?
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t6_out.txt" 2>&1 || RC=$?
 
 if [[ $RC -ne 0 ]]; then
     fail "Test 6: backup.sh exited with code ${RC}"

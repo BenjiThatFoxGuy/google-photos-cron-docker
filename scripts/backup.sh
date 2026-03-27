@@ -81,7 +81,7 @@ for i in "${!SOURCE_PATHS[@]}"; do
         FIND_DEPTH_ARGS=("-maxdepth" "1")
     fi
 
-    if [[ -z "$(find "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f 2>/dev/null | head -1)" ]]; then
+    if [[ -z "$(find "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f -print -quit 2>/dev/null)" ]]; then
         color yellow "No files found in source path, skipping: ${SOURCE}"
         continue
     fi
