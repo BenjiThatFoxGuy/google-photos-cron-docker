@@ -394,20 +394,20 @@ else
 fi
 
 ########################################
-# Tests 10–14: cron_is_interval — validate the interval-detection logic
+# Tests 10–15: cron_is_interval — validate the interval-detection logic
 # that drives the "run backup immediately on container start" feature.
 #
 # The function is defined inline here (mirroring entrypoint.sh) so the
 # tests have no dependency on parsing the entrypoint source file.
 ########################################
-echo "--- Tests 10–14: cron_is_interval detection ---"
+echo "--- Tests 10–15: cron_is_interval detection ---"
 
 function cron_is_interval() {
     local field
     local -a cron_fields
     read -ra cron_fields <<< "${CRON}"
     for field in "${cron_fields[@]}"; do
-        if [[ "${field}" =~ ^\*/[0-9]+$ ]]; then
+        if [[ "${field}" =~ ^\*/[1-9][0-9]*$ ]]; then
             return 0
         fi
     done
@@ -452,6 +452,14 @@ if cron_is_interval; then
     fail "Test 14: '${CRON}' should NOT be interval but was detected as one"
 else
     pass "Test 14: '${CRON}' correctly identified as non-interval"
+fi
+
+# Test 15: invalid step */0 → NOT interval (step of 0 is invalid)
+CRON="*/0 * * * *"
+if cron_is_interval; then
+    fail "Test 15: '${CRON}' should NOT be interval (step 0 is invalid) but was detected as one"
+else
+    pass "Test 15: '${CRON}' correctly rejected as non-interval (step 0 is invalid)"
 fi
 
 ########################################
