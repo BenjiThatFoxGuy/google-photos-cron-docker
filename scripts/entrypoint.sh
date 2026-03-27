@@ -30,7 +30,7 @@ function cron_is_interval() {
     local -a cron_fields
     read -ra cron_fields <<< "${CRON}"
     for field in "${cron_fields[@]}"; do
-        if [[ "${field}" =~ ^\*/[0-9]+$ ]]; then
+        if [[ "${field}" =~ ^\*/[1-9][0-9]*$ ]]; then
             return 0
         fi
     done
@@ -95,6 +95,10 @@ fi
 if cron_is_interval; then
     color blue "Interval-style cron detected — running initial backup immediately"
     bash /app/backup.sh
+    initial_backup_rc=$?
+    if [[ ${initial_backup_rc} -ne 0 ]]; then
+        color red "Initial backup failed with exit code ${initial_backup_rc}; continuing to start scheduler"
+    fi
 fi
 
 color blue "Starting supercronic scheduler"
