@@ -1,8 +1,15 @@
 # ── Stage 1: build gotohp CLI binary ──────────────────────────────────────────
-# We clone the gotohp source, patch backend/wails_app.go to add
-# "//go:build !cli" so that it (and its Wails/webkit2gtk dependency) is
-# excluded when compiling with -tags cli.  The result is a pure-Go,
-# statically-linked binary that runs on Alpine without any GUI libraries.
+# We clone the gotohp source and apply three patches so that the Wails GUI
+# library (which requires CGo/webkit2gtk) is excluded when compiling with
+# -tags cli.  The result is a pure-Go, statically-linked binary that runs
+# on Alpine without any GUI libraries.
+#
+# Patches applied:
+#   1. backend/wails_app.go   – prepend "//go:build !cli" (wraps the Wails
+#      app adapter so it is skipped in CLI builds).
+#   2. backend/album.go       – strip the Wails import and its init() block,
+#      then re-create them in backend/album_gui.go guarded by "//go:build !cli".
+#   3. backend/upload.go      – same treatment as album.go, via upload_gui.go.
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
@@ -14,11 +21,38 @@ RUN git clone --depth 1 --branch ${GOTOHP_VERSION} \
 
 WORKDIR /gotohp
 
-# Prepend the build constraint so the Wails-dependent file is skipped
-# when building with -tags cli, removing all webkit2gtk/CGo requirements.
-RUN { printf '//go:build !cli\n\n'; cat backend/wails_app.go; } \
-        > /tmp/wails_app.go \
-    && mv /tmp/wails_app.go backend/wails_app.go
+# Patch 1: guard wails_app.go so it is excluded from CLI builds.
+# Only prepend the build constraint when it isn't already present, so that
+# a future upstream addition of a //go:build line won't produce duplicate
+# constraints and break compilation.
+RUN if ! grep -q '^//go:build' backend/wails_app.go; then \
+        { printf '//go:build !cli\n\n'; cat backend/wails_app.go; } \
+            > /tmp/wails_app.go \
+        && mv /tmp/wails_app.go backend/wails_app.go; \
+    fi
+
+# Patch 2: move the Wails-dependent init() out of album.go into a new
+# album_gui.go file that is excluded from CLI builds.
+# Post-sed checks ensure the sed patterns matched: if the Wails import or any
+# RegisterEvent call is still present in album.go the build is aborted immediately.
+RUN sed -i '/wailsapp\/wails/d' backend/album.go \
+    && sed -i '/^func init() {$/,/^}$/d' backend/album.go \
+    && if grep -q 'wailsapp/wails\|RegisterEvent' backend/album.go; then \
+           echo 'Error: Wails import or RegisterEvent calls still present in backend/album.go after sed edits'; exit 1; \
+       fi \
+    && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[AlbumStatus]("albumProgress")\n\tapplication.RegisterEvent[AlbumStatus]("albumComplete")\n\tapplication.RegisterEvent[AlbumError]("albumError")\n}\n' \
+        > backend/album_gui.go
+
+# Patch 3: same treatment for upload.go → upload_gui.go.
+# Validation confirms that neither the Wails import nor any RegisterEvent
+# call remains in upload.go after the sed edits.
+RUN sed -i '/wailsapp\/wails/d' backend/upload.go \
+    && sed -i '/^func init() {$/,/^}$/d' backend/upload.go \
+    && if grep -q 'wailsapp/wails\|RegisterEvent' backend/upload.go; then \
+           echo 'Error: Wails import or RegisterEvent calls still present in backend/upload.go after sed edits'; exit 1; \
+       fi \
+    && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[UploadBatchStart]("uploadStart")\n\tapplication.RegisterEvent[application.Void]("uploadStop")\n\tapplication.RegisterEvent[FileUploadResult]("FileStatus")\n\tapplication.RegisterEvent[ThreadStatus]("ThreadStatus")\n\tapplication.RegisterEvent[application.Void]("uploadCancel")\n\tapplication.RegisterEvent[int64]("uploadTotalBytes")\n\tapplication.RegisterEvent[FilesDroppedEvent]("files-dropped")\n\tapplication.RegisterEvent[StartUploadEvent]("startUpload")\n}\n' \
+        > backend/upload_gui.go
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \
