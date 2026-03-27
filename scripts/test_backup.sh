@@ -30,11 +30,13 @@ HANG_TEST_TIMEOUT=10
 #   $1  test name (used as subdirectory name under $SCRATCH)
 #   $2  first source path  (the one we expect to be skipped/empty)
 #   $3  second source path (the one we expect to be uploaded)
+#   $4  global GOTOHP_RECURSIVE value (optional; default: "TRUE")
 ########################################
 setup_env() {
     local test_name="$1"
     local first_source="$2"
     local second_source="$3"
+    local gotohp_recursive="${4:-TRUE}"
 
     local env_dir="${SCRATCH}/${test_name}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
@@ -75,7 +77,7 @@ function init_env() {
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "")
     GOTOHP_LOG_LEVEL_LIST=("" "")
     GOTOHP_THREADS="3"
-    GOTOHP_RECURSIVE="TRUE"
+    GOTOHP_RECURSIVE="${gotohp_recursive}"
     GOTOHP_FORCE="FALSE"
     GOTOHP_DELETE="FALSE"
     GOTOHP_DISABLE_FILTER="FALSE"
@@ -207,6 +209,62 @@ elif grep -q "${EMPTY4}" "${GOTOHP_CALLS}" 2>/dev/null; then
     cat "${SCRATCH}/t4_out.txt"
 else
     pass "Test 4: empty source did not invoke gotohp (no softlock)"
+fi
+
+########################################
+# Test 5: RECURSIVE=FALSE, source has only subdirectories → skipped
+# (Reproduces the user's scenario: SOURCE_PATH=/photos/PixelDump with sub-
+#  folders inside but no files directly at the top level, RECURSIVE=FALSE.)
+########################################
+echo "--- Test 5: RECURSIVE=FALSE, source contains only subdirectories → skipped ---"
+
+SUBDIR_ONLY="${SCRATCH}/t5_subdir_only"
+FILES5="${SCRATCH}/t5_files"
+mkdir -p "${SUBDIR_ONLY}/nested" "${FILES5}"
+echo "photo" > "${SUBDIR_ONLY}/nested/photo.jpg"  # file only in a subdir
+echo "photo" > "${FILES5}/photo.jpg"
+
+setup_env "t5" "${SUBDIR_ONLY}" "${FILES5}" "FALSE"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t5_out.txt" 2>&1; RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 5: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t5_out.txt"
+elif grep -q "${SUBDIR_ONLY}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 5: gotohp was called on source with only subdirectories (RECURSIVE=FALSE)"
+    cat "${SCRATCH}/t5_out.txt"
+elif ! grep -q "${FILES5}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 5: gotohp was NOT called with the files source"
+    cat "${SCRATCH}/t5_out.txt"
+else
+    pass "Test 5: subdir-only source skipped when RECURSIVE=FALSE"
+fi
+
+########################################
+# Test 6: RECURSIVE=FALSE, source has direct files AND subdirectories → uploaded
+########################################
+echo "--- Test 6: RECURSIVE=FALSE, source has direct files AND subdirs → uploaded ---"
+
+MIXED="${SCRATCH}/t6_mixed"
+EMPTY6="${SCRATCH}/t6_empty"
+mkdir -p "${MIXED}/subdir" "${EMPTY6}"
+echo "photo" > "${MIXED}/direct.jpg"          # direct file  → should be picked up
+echo "photo" > "${MIXED}/subdir/nested.jpg"   # file in subdir → ignored by gotohp
+
+setup_env "t6" "${MIXED}" "${EMPTY6}" "FALSE"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t6_out.txt" 2>&1; RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 6: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t6_out.txt"
+elif ! grep -q "${MIXED}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 6: gotohp was NOT called for source with direct files (RECURSIVE=FALSE)"
+    cat "${SCRATCH}/t6_out.txt"
+elif grep -q "${EMPTY6}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 6: gotohp was called with the empty source"
+    cat "${SCRATCH}/t6_out.txt"
+else
+    pass "Test 6: source with direct files uploaded when RECURSIVE=FALSE"
 fi
 
 ########################################

@@ -19,6 +19,8 @@ function build_gotohp_flags() {
     local LOG_LEVEL="${GOTOHP_LOG_LEVEL_LIST[${i}]:-${GOTOHP_LOG_LEVEL}}"
     local RECURSIVE
     RECURSIVE=$(echo "${GOTOHP_RECURSIVE_LIST[${i}]:-${GOTOHP_RECURSIVE}}" | tr '[:lower:]' '[:upper:]')
+    # Expose for use by the pre-flight file check in the main loop.
+    GOTOHP_EFFECTIVE_RECURSIVE="${RECURSIVE}"
     local FORCE
     FORCE=$(echo "${GOTOHP_FORCE_LIST[${i}]:-${GOTOHP_FORCE}}" | tr '[:lower:]' '[:upper:]')
     local DELETE
@@ -69,12 +71,21 @@ for i in "${!SOURCE_PATHS[@]}"; do
         continue
     fi
 
-    if [[ -z "$(find "${SOURCE}" -type f 2>/dev/null | head -1)" ]]; then
+    build_gotohp_flags "${i}"
+
+    # When not in recursive mode, gotohp only processes files directly inside
+    # SOURCE (not in subdirectories).  Limit the pre-flight search depth to
+    # match so we don't call gotohp on a directory that holds only subdirs.
+    FIND_DEPTH_ARGS=()
+    if [[ "${GOTOHP_EFFECTIVE_RECURSIVE}" != "TRUE" ]]; then
+        FIND_DEPTH_ARGS=("-maxdepth" "1")
+    fi
+
+    if [[ -z "$(find "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f 2>/dev/null | head -1)" ]]; then
         color yellow "No files found in source path, skipping: ${SOURCE}"
         continue
     fi
 
-    build_gotohp_flags "${i}"
     UPLOAD_FLAGS=("${GOTOHP_FLAGS[@]}")
     if [[ -n "${ALBUM}" ]]; then
         UPLOAD_FLAGS+=("--album" "${ALBUM}")
