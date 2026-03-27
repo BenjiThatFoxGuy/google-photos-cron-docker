@@ -3,30 +3,47 @@
 . /app/includes.sh
 
 ########################################
-# Build an array of gotohp upload flags
-# from the resolved environment variables.
+# Build an array of gotohp upload flags for a given source/album pair.
+# Per-pair override variables (GOTOHP_*_N) take precedence; the global
+# GOTOHP_* values are used as defaults when no override is set.
+# Arguments:
+#     pair index (integer)
 # Outputs:
 #     GOTOHP_FLAGS array
 ########################################
 function build_gotohp_flags() {
+    local i="$1"
     GOTOHP_FLAGS=()
 
-    GOTOHP_FLAGS+=("--threads" "${GOTOHP_THREADS}")
-    GOTOHP_FLAGS+=("--log-level" "${GOTOHP_LOG_LEVEL}")
+    local THREADS="${GOTOHP_THREADS_LIST[${i}]:-${GOTOHP_THREADS}}"
+    local LOG_LEVEL="${GOTOHP_LOG_LEVEL_LIST[${i}]:-${GOTOHP_LOG_LEVEL}}"
+    local RECURSIVE
+    RECURSIVE=$(echo "${GOTOHP_RECURSIVE_LIST[${i}]:-${GOTOHP_RECURSIVE}}" | tr '[:lower:]' '[:upper:]')
+    local FORCE
+    FORCE=$(echo "${GOTOHP_FORCE_LIST[${i}]:-${GOTOHP_FORCE}}" | tr '[:lower:]' '[:upper:]')
+    local DELETE
+    DELETE=$(echo "${GOTOHP_DELETE_LIST[${i}]:-${GOTOHP_DELETE}}" | tr '[:lower:]' '[:upper:]')
+    local DISABLE_FILTER
+    DISABLE_FILTER=$(echo "${GOTOHP_DISABLE_FILTER_LIST[${i}]:-${GOTOHP_DISABLE_FILTER}}" | tr '[:lower:]' '[:upper:]')
+    local DATE_FROM_FILENAME
+    DATE_FROM_FILENAME=$(echo "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]:-${GOTOHP_DATE_FROM_FILENAME}}" | tr '[:lower:]' '[:upper:]')
 
-    if [[ "${GOTOHP_RECURSIVE}" == "TRUE" ]]; then
+    GOTOHP_FLAGS+=("--threads" "${THREADS}")
+    GOTOHP_FLAGS+=("--log-level" "${LOG_LEVEL}")
+
+    if [[ "${RECURSIVE}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--recursive")
     fi
-    if [[ "${GOTOHP_FORCE}" == "TRUE" ]]; then
+    if [[ "${FORCE}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--force")
     fi
-    if [[ "${GOTOHP_DELETE}" == "TRUE" ]]; then
+    if [[ "${DELETE}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--delete")
     fi
-    if [[ "${GOTOHP_DISABLE_FILTER}" == "TRUE" ]]; then
+    if [[ "${DISABLE_FILTER}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--disable-filter")
     fi
-    if [[ "${GOTOHP_DATE_FROM_FILENAME}" == "TRUE" ]]; then
+    if [[ "${DATE_FROM_FILENAME}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--date-from-filename")
     fi
 }
@@ -41,8 +58,6 @@ if [[ "${#SOURCE_PATHS[@]}" -eq 0 ]]; then
     exit 1
 fi
 
-build_gotohp_flags
-
 HAS_ERROR="FALSE"
 
 for i in "${!SOURCE_PATHS[@]}"; do
@@ -54,6 +69,7 @@ for i in "${!SOURCE_PATHS[@]}"; do
         continue
     fi
 
+    build_gotohp_flags "${i}"
     UPLOAD_FLAGS=("${GOTOHP_FLAGS[@]}")
     if [[ -n "${ALBUM}" ]]; then
         UPLOAD_FLAGS+=("--album" "${ALBUM}")

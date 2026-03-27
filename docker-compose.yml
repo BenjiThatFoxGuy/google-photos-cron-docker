@@ -29,7 +29,9 @@ services:
       GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
     volumes:
-      - /path/to/your/photos:/photos:ro   # source (read-only recommended)
+      # If GOTOHP_DELETE is TRUE, this mount must be read-write (no :ro).
+      # If you are not using GOTOHP_DELETE, you can add :ro for safety.
+      - /path/to/your/photos:/photos      # source directory
       - gotohp-config:/config             # persists credentials & config
 
   # ── Multiple sources → multiple albums ──────────────────────────────────────
@@ -43,13 +45,21 @@ services:
   #     TIMEZONE: Europe/London
   #     GOTOHP_CREDS: "androidId=XXXXXXXXXXXXXXXXXX&..."
   #
+  #     # Global upload options (apply to all pairs unless overridden)
+  #     GOTOHP_THREADS: "3"
+  #     GOTOHP_RECURSIVE: "TRUE"
+  #
   #     # Source 0 → Album 0
   #     SOURCE_PATH_0: /camera
   #     ALBUM_NAME_0: "Camera Roll"
+  #     # Override threads for this pair only
+  #     GOTOHP_THREADS_0: "5"
   #
   #     # Source 1 → Album 1
   #     SOURCE_PATH_1: /screenshots
   #     ALBUM_NAME_1: "Screenshots"
+  #     # Override recursive for this pair only (disable sub-directory scan)
+  #     GOTOHP_RECURSIVE_1: "FALSE"
   #
   #     # Source 2 → no album (uploaded directly to library root)
   #     SOURCE_PATH_2: /videos
@@ -59,10 +69,10 @@ services:
   #     # SOURCE_PATH_3: /organised
   #     # ALBUM_NAME_3: "AUTO"
   #
-  #     GOTOHP_THREADS: "5"
-  #     GOTOHP_RECURSIVE: "TRUE"
   #   volumes:
-  #     - /path/to/camera:/camera:ro
+  #     # Mounts for pairs with GOTOHP_DELETE enabled must be read-write (no :ro).
+  #     # Mounts for pairs without delete can safely use :ro.
+  #     - /path/to/camera:/camera
   #     - /path/to/screenshots:/screenshots:ro
   #     - /path/to/videos:/videos:ro
   #     - gotohp-config:/config

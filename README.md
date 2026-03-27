@@ -15,6 +15,7 @@ easy to adopt if you are already familiar with that project.
 - Scheduled uploads via cron (powered by supercronic)
 - Single **or** multiple source → album pairs per container
 - All `gotohp upload` flags exposed as environment variables
+- Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
 - Credentials stored in a Docker volume — survive container restarts
 - Secrets can be supplied via files (`_FILE` suffix) or a `.env` file
 - Tiny Alpine-based image, pure-Go binary (no webkit/GUI dependencies)
@@ -89,6 +90,30 @@ the indexed form.  Both styles may be combined.
 | `GOTOHP_DATE_FROM_FILENAME`| `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
 | `GOTOHP_LOG_LEVEL`         | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
 
+### Per-pair upload option overrides
+
+Any upload option can be overridden for a specific source/album pair by appending
+the pair index to the variable name.  If the per-pair variable is not set, the
+global value is used as the default.
+
+| Variable                      | Description |
+|-------------------------------|-------------|
+| `GOTOHP_THREADS_N`            | Override concurrent threads for pair N |
+| `GOTOHP_RECURSIVE_N`          | Override recursive flag for pair N |
+| `GOTOHP_FORCE_N`              | Override force flag for pair N |
+| `GOTOHP_DELETE_N`             | Override delete flag for pair N |
+| `GOTOHP_DISABLE_FILTER_N`     | Override disable-filter flag for pair N |
+| `GOTOHP_DATE_FROM_FILENAME_N` | Override date-from-filename flag for pair N |
+| `GOTOHP_LOG_LEVEL_N`          | Override log level for pair N |
+
+Example — use more threads for the large camera roll but fewer for screenshots:
+
+```yaml
+GOTOHP_THREADS: "3"        # default for all pairs
+GOTOHP_THREADS_0: "8"      # more threads for SOURCE_PATH_0 (e.g. camera roll)
+GOTOHP_THREADS_1: "1"      # fewer threads for SOURCE_PATH_1 (e.g. screenshots)
+```
+
 ### Secret handling
 
 Every variable above supports a `_FILE` suffix — the container will read the
@@ -110,7 +135,7 @@ Variables can also be placed in a `/.env` file mounted into the container.
 | Mount point | Purpose |
 |-------------|---------|
 | `/config`   | Persists the gotohp credential store and settings across restarts |
-| Source dirs | Mount your photo directories here (read-only recommended) |
+| Source dirs | Mount your photo directories here. If you enable [`GOTOHP_DELETE`](#upload-options) or [`GOTOHP_DELETE_N`](#per-pair-upload-option-overrides) to delete files after a successful upload, the mount **must be read-write**. If you are not using delete-after-upload, adding `:ro` to the mount is safe and recommended. |
 
 ---
 
@@ -127,13 +152,17 @@ services:
       GOTOHP_CREDS: "androidId=..."
       SOURCE_PATH: /photos
       ALBUM_NAME: "My Backup"
+      GOTOHP_DELETE: "TRUE"   # delete source file after a successful upload
     volumes:
-      - /mnt/photos:/photos:ro
-      - gotohp-config:/config
+      - /mnt/photos:/photos       # read-write required when GOTOHP_DELETE is enabled
+      - gotohp-config:/config     # persists credentials & config
 
 volumes:
   gotohp-config:
 ```
+
+> **Note:** If you are not using `GOTOHP_DELETE`, you can add `:ro` to the source
+> mount (e.g. `/mnt/photos:/photos:ro`) for an extra layer of safety.
 
 ### Multiple sources
 
@@ -144,16 +173,20 @@ services:
     environment:
       CRON: "0 3 * * *"
       GOTOHP_CREDS: "androidId=..."
+      GOTOHP_THREADS: "3"          # global default
       SOURCE_PATH_0: /camera
       ALBUM_NAME_0: "Camera Roll"
+      GOTOHP_THREADS_0: "8"        # override threads for pair 0 only
+      GOTOHP_DELETE_0: "TRUE"      # delete camera files after upload (pair 0)
       SOURCE_PATH_1: /screenshots
       ALBUM_NAME_1: "Screenshots"
+      GOTOHP_RECURSIVE_1: "FALSE"  # flat folder — skip sub-directories (pair 1)
       SOURCE_PATH_2: /videos
       # ALBUM_NAME_2 omitted — uploads to library root
     volumes:
-      - /mnt/camera:/camera:ro
-      - /mnt/screenshots:/screenshots:ro
-      - /mnt/videos:/videos:ro
+      - /mnt/camera:/camera           # read-write — GOTOHP_DELETE_0 is enabled
+      - /mnt/screenshots:/screenshots:ro  # read-only is fine; no delete for pair 1
+      - /mnt/videos:/videos:ro            # read-only is fine; no delete for pair 2
       - gotohp-config:/config
 
 volumes:
@@ -174,10 +207,14 @@ docker run --rm \
   -e GOTOHP_CREDS="androidId=..." \
   -e SOURCE_PATH=/photos \
   -e ALBUM_NAME="My Backup" \
-  -v /mnt/photos:/photos:ro \
+  -v /mnt/photos:/photos \
   -v gotohp-config:/config \
   ghcr.io/benjithatfoxguy/google-photos-cron-docker:latest backup
 ```
+
+> **Note:** Pass `-e GOTOHP_DELETE=TRUE` to delete each file after it is
+> successfully uploaded.  If you are not using `GOTOHP_DELETE`, you can append
+> `:ro` to the source mount for safety.
 
 ---
 
