@@ -394,7 +394,7 @@ else
 fi
 
 ########################################
-# Tests 10–14: cron_is_interval — validate the interval-detection logic
+# Tests 10–15: cron_is_interval — validate the interval-detection logic
 # that drives the "run backup immediately on container start" feature.
 #
 # The function is defined inline here (mirroring entrypoint.sh) so the
