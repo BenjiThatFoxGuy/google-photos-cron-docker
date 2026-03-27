@@ -106,6 +106,14 @@ global value is used as the default.
 | `GOTOHP_DATE_FROM_FILENAME_N` | Override date-from-filename flag for pair N |
 | `GOTOHP_LOG_LEVEL_N`          | Override log level for pair N |
 
+Example — use more threads for the large camera roll but fewer for screenshots:
+
+```yaml
+GOTOHP_THREADS: "3"        # default for all pairs
+GOTOHP_THREADS_0: "8"      # more threads for SOURCE_PATH_0 (e.g. camera roll)
+GOTOHP_THREADS_1: "1"      # fewer threads for SOURCE_PATH_1 (e.g. screenshots)
+```
+
 ### Secret handling
 
 Every variable above supports a `_FILE` suffix — the container will read the
