@@ -10,8 +10,8 @@
 #   2. backend/album.go       – strip the Wails import and its init() block,
 #      then re-create them in backend/album_gui.go guarded by "//go:build !cli".
 #   3. backend/upload.go      – same treatment as album.go, via upload_gui.go.
-#   4. cli.go                 – pass tea.WithInput(os.Stdin) to tea.NewProgram
-#      so Bubble Tea does not try to open /dev/tty (unavailable in cron jobs).
+#   4. cli.go                 – supply an os.Pipe() reader to tea.NewProgram so
+#      Bubble Tea uses an epoll-safe fd instead of stdin (/dev/null in cron).
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
@@ -56,20 +56,22 @@ RUN sed -i '/wailsapp\/wails/d' backend/upload.go \
     && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[UploadBatchStart]("uploadStart")\n\tapplication.RegisterEvent[application.Void]("uploadStop")\n\tapplication.RegisterEvent[FileUploadResult]("FileStatus")\n\tapplication.RegisterEvent[ThreadStatus]("ThreadStatus")\n\tapplication.RegisterEvent[application.Void]("uploadCancel")\n\tapplication.RegisterEvent[int64]("uploadTotalBytes")\n\tapplication.RegisterEvent[FilesDroppedEvent]("files-dropped")\n\tapplication.RegisterEvent[StartUploadEvent]("startUpload")\n}\n' \
         > backend/upload_gui.go
 
-# Patch 4: pass tea.WithInput(os.Stdin) to NewProgram so that Bubble Tea does
-# not attempt to open /dev/tty, which is unavailable in headless Docker cron
-# jobs.  Without this, every scheduled upload fails with:
-#   "error running TUI: could not open a new TTY: open /dev/tty: no such device or address"
+# Patch 4: supply an os.Pipe() read end as Bubble Tea's input so that the
+# cancelreader package has an epoll-safe file descriptor.  Using os.Stdin
+# directly fails in headless Docker cron jobs where stdin is /dev/null:
+#   "error running TUI: error creating cancelreader: add reader to epoll interest list"
+# A pipe fd is always a valid epoll target on Linux, solving both the original
+# /dev/tty error and the newer epoll registration error.
 RUN if ! grep -q '"os"' cli.go; then \
         awk '/^import \(/{print; print "\t\"os\""; next} {print}' cli.go > /tmp/cli.go \
         && mv /tmp/cli.go cli.go; \
     fi \
-    && sed -i 's|p := tea.NewProgram(model)|p := tea.NewProgram(model, tea.WithInput(os.Stdin))|' cli.go \
+    && sed -i 's|p := tea.NewProgram(model)|r, w, _ := os.Pipe(); if w != nil { w.Close() }; if r == nil { r = os.Stdin }; p := tea.NewProgram(model, tea.WithInput(r))|' cli.go \
     && if ! grep -q '"os"' cli.go; then \
            echo 'Error: "os" import not found in cli.go after patch'; exit 1; \
        fi \
-    && if ! grep -q 'tea.WithInput(os.Stdin)' cli.go; then \
-           echo 'Error: tea.WithInput(os.Stdin) not found in cli.go after patch'; exit 1; \
+    && if ! grep -q 'tea.WithInput(r)' cli.go; then \
+           echo 'Error: tea.WithInput(r) not found in cli.go after patch'; exit 1; \
        fi
 
 RUN CGO_ENABLED=0 go build \
