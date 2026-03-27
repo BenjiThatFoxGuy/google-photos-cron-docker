@@ -10,6 +10,8 @@
 #   2. backend/album.go       – strip the Wails import and its init() block,
 #      then re-create them in backend/album_gui.go guarded by "//go:build !cli".
 #   3. backend/upload.go      – same treatment as album.go, via upload_gui.go.
+#   4. cli.go                 – pass tea.WithInput(os.Stdin) to tea.NewProgram
+#      so Bubble Tea does not try to open /dev/tty (unavailable in cron jobs).
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
@@ -53,6 +55,20 @@ RUN sed -i '/wailsapp\/wails/d' backend/upload.go \
        fi \
     && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[UploadBatchStart]("uploadStart")\n\tapplication.RegisterEvent[application.Void]("uploadStop")\n\tapplication.RegisterEvent[FileUploadResult]("FileStatus")\n\tapplication.RegisterEvent[ThreadStatus]("ThreadStatus")\n\tapplication.RegisterEvent[application.Void]("uploadCancel")\n\tapplication.RegisterEvent[int64]("uploadTotalBytes")\n\tapplication.RegisterEvent[FilesDroppedEvent]("files-dropped")\n\tapplication.RegisterEvent[StartUploadEvent]("startUpload")\n}\n' \
         > backend/upload_gui.go
+
+# Patch 4: pass tea.WithInput(os.Stdin) to NewProgram so that Bubble Tea does
+# not attempt to open /dev/tty, which is unavailable in headless Docker cron
+# jobs.  Without this, every scheduled upload fails with:
+#   "error running TUI: could not open a new TTY: open /dev/tty: no such device or address"
+RUN if ! grep -q '"os"' cli.go; then \
+        awk '/^import \(/{print; print "\t\"os\""; next} {print}' cli.go > /tmp/cli.go \
+        && mv /tmp/cli.go cli.go; \
+    fi \
+    && sed -i 's|p := tea.NewProgram(model)|p := tea.NewProgram(model, tea.WithInput(os.Stdin))|' cli.go \
+    && grep -q '"os"' cli.go \
+        || { echo 'Error: "os" import not found in cli.go after patch'; exit 1; } \
+    && grep -q 'tea.WithInput(os.Stdin)' cli.go \
+        || { echo 'Error: tea.WithInput(os.Stdin) not found in cli.go after patch'; exit 1; }
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \
