@@ -110,8 +110,8 @@ Example — use more threads for the large camera roll but fewer for screenshots
 
 ```yaml
 GOTOHP_THREADS: "3"        # default for all pairs
-GOTOHP_THREADS_0: "8"      # override for SOURCE_PATH_0 only
-GOTOHP_LOG_LEVEL_1: "debug" # override log level for SOURCE_PATH_1 only
+GOTOHP_THREADS_0: "8"      # more threads for SOURCE_PATH_0 (e.g. camera roll)
+GOTOHP_THREADS_1: "1"      # fewer threads for SOURCE_PATH_1 (e.g. screenshots)
 ```
 
 ### Secret handling
