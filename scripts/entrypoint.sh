@@ -12,13 +12,12 @@ function configure_timezone() {
 ########################################
 # Write crontab entries for each schedule group.
 # Each group is one cron expression with one or more pair indices.
+# Requires SCHEDULE_GROUPS to be built before calling (see build_schedule_groups).
 ########################################
 function configure_cron() {
     if grep -q 'backup.sh' "${CRON_CONFIG_FILE}" 2>/dev/null; then
         return
     fi
-
-    build_schedule_groups
 
     local cron_expr pair_indices
     for cron_expr in "${!SCHEDULE_GROUPS[@]}"; do
@@ -87,6 +86,7 @@ function setup_credentials() {
 }
 
 init_env
+build_schedule_groups
 configure_timezone
 setup_credentials
 configure_cron

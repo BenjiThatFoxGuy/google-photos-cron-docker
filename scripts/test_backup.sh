@@ -470,24 +470,14 @@ fi
 ########################################
 
 ########################################
-# Tests 16–19: build_schedule_groups — verify grouping logic.
-# The function is defined inline here (mirroring includes.sh) so the
-# tests have no dependency on the real includes.sh file.
+# Tests 16–19: build_schedule_groups — verify grouping logic using the real
+# implementation from includes.sh so tests track production behaviour.
 ########################################
 echo "--- Tests 16–19: build_schedule_groups ---"
 
-function build_schedule_groups() {
-    declare -gA SCHEDULE_GROUPS=()
-    local i cron_expr
-    for i in "${!SOURCE_PATHS[@]}"; do
-        cron_expr="${CRON_LIST[${i}]:-${CRON}}"
-        if [[ -z "${SCHEDULE_GROUPS[${cron_expr}]+_}" ]]; then
-            SCHEDULE_GROUPS["${cron_expr}"]="${i}"
-        else
-            SCHEDULE_GROUPS["${cron_expr}"]="${SCHEDULE_GROUPS[${cron_expr}]},${i}"
-        fi
-    done
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+. "${SCRIPT_DIR}/includes.sh"
 
 # Test 16: no CRON_N set — all pairs grouped under global CRON (single group)
 CRON="0 2 * * *"
