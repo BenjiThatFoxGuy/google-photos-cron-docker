@@ -34,6 +34,7 @@ HANG_TEST_TIMEOUT=10
 #   $5  email for pair 0 override (optional; default: "")
 #   $6  email for pair 1 override (optional; default: "")
 #   $7  global GOTOHP_EMAIL value (optional; default: "")
+#   $8  CRON_OVERLAP value (optional; default: "QUEUE")
 ########################################
 setup_env() {
     local test_name="$1"
@@ -43,6 +44,7 @@ setup_env() {
     local pair0_email="${5:-}"
     local pair1_email="${6:-}"
     local global_email="${7:-}"
+    local cron_overlap="${8:-QUEUE}"
 
     local env_dir="${SCRATCH}/${test_name}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
@@ -84,6 +86,7 @@ function init_env() {
     GOTOHP_LOG_LEVEL_LIST=("" "")
     GOTOHP_CREDS_LIST=("" "")
     GOTOHP_EMAIL_LIST=("${pair0_email}" "${pair1_email}")
+    CRON_LIST=("" "")
     GOTOHP_THREADS="3"
     GOTOHP_RECURSIVE="${gotohp_recursive}"
     GOTOHP_FORCE="FALSE"
@@ -92,6 +95,7 @@ function init_env() {
     GOTOHP_DATE_FROM_FILENAME="FALSE"
     GOTOHP_LOG_LEVEL="info"
     GOTOHP_EMAIL="${global_email}"
+    CRON_OVERLAP="${cron_overlap}"
 }
 HEREDOC
 
@@ -460,6 +464,398 @@ if cron_is_interval; then
     fail "Test 15: '${CRON}' should NOT be interval (step 0 is invalid) but was detected as one"
 else
     pass "Test 15: '${CRON}' correctly rejected as non-interval (step 0 is invalid)"
+fi
+
+########################################
+########################################
+
+########################################
+# Tests 16–19: build_schedule_groups — verify grouping logic.
+# The function is defined inline here (mirroring includes.sh) so the
+# tests have no dependency on the real includes.sh file.
+########################################
+echo "--- Tests 16–19: build_schedule_groups ---"
+
+function build_schedule_groups() {
+    declare -gA SCHEDULE_GROUPS=()
+    local i cron_expr
+    for i in "${!SOURCE_PATHS[@]}"; do
+        cron_expr="${CRON_LIST[${i}]:-${CRON}}"
+        if [[ -z "${SCHEDULE_GROUPS[${cron_expr}]+_}" ]]; then
+            SCHEDULE_GROUPS["${cron_expr}"]="${i}"
+        else
+            SCHEDULE_GROUPS["${cron_expr}"]="${SCHEDULE_GROUPS[${cron_expr}]},${i}"
+        fi
+    done
+}
+
+# Test 16: no CRON_N set — all pairs grouped under global CRON (single group)
+CRON="0 2 * * *"
+SOURCE_PATHS=("a" "b" "c")
+CRON_LIST=("" "" "")
+build_schedule_groups
+if [[ "${#SCHEDULE_GROUPS[@]}" -eq 1 && "${SCHEDULE_GROUPS["0 2 * * *"]}" == "0,1,2" ]]; then
+    pass "Test 16: no CRON_N — all pairs in single global-cron group"
+else
+    fail "Test 16: expected 1 group '0 2 * * *'→'0,1,2', got ${#SCHEDULE_GROUPS[@]} groups: $(declare -p SCHEDULE_GROUPS)"
+fi
+
+# Test 17: all pairs have the same CRON_N — still produces a single group
+CRON="0 2 * * *"
+SOURCE_PATHS=("a" "b")
+CRON_LIST=("*/5 * * * *" "*/5 * * * *")
+build_schedule_groups
+if [[ "${#SCHEDULE_GROUPS[@]}" -eq 1 && "${SCHEDULE_GROUPS["*/5 * * * *"]}" == "0,1" ]]; then
+    pass "Test 17: identical CRON_N on all pairs — single group produced"
+else
+    fail "Test 17: expected 1 group '*/5 * * * *'→'0,1', got ${#SCHEDULE_GROUPS[@]} groups: $(declare -p SCHEDULE_GROUPS)"
+fi
+
+# Test 18: mixed overrides — pairs 0,2 use global; pair 1 has CRON_1 override
+CRON="0 2 * * *"
+SOURCE_PATHS=("a" "b" "c")
+CRON_LIST=("" "*/30 * * * *" "")
+build_schedule_groups
+if [[ "${#SCHEDULE_GROUPS[@]}" -eq 2 \
+      && "${SCHEDULE_GROUPS["0 2 * * *"]}" == "0,2" \
+      && "${SCHEDULE_GROUPS["*/30 * * * *"]}" == "1" ]]; then
+    pass "Test 18: mixed overrides — two groups with correct pair assignments"
+else
+    fail "Test 18: expected 2 groups ('0 2 * * *'→'0,2', '*/30 * * * *'→'1'), got: $(declare -p SCHEDULE_GROUPS)"
+fi
+
+# Test 19: every pair has a unique CRON_N — N groups, one pair each
+CRON="5 * * * *"
+SOURCE_PATHS=("a" "b" "c")
+CRON_LIST=("0 1 * * *" "0 2 * * *" "0 3 * * *")
+build_schedule_groups
+if [[ "${#SCHEDULE_GROUPS[@]}" -eq 3 \
+      && "${SCHEDULE_GROUPS["0 1 * * *"]}" == "0" \
+      && "${SCHEDULE_GROUPS["0 2 * * *"]}" == "1" \
+      && "${SCHEDULE_GROUPS["0 3 * * *"]}" == "2" ]]; then
+    pass "Test 19: unique CRON_N per pair — ${#SCHEDULE_GROUPS[@]} groups, one pair each"
+else
+    fail "Test 19: expected 3 unique groups, got: $(declare -p SCHEDULE_GROUPS)"
+fi
+
+########################################
+# Tests 20–21: PAIR_INDICES filtering in backup.sh
+########################################
+echo "--- Tests 20–21: PAIR_INDICES filtering ---"
+
+# Helper: create a 3-pair mock environment for PAIR_INDICES tests.
+# Arguments: test_name cron_overlap
+setup_env_multi() {
+    local test_name="$1"
+    local cron_overlap="${2:-QUEUE}"
+
+    local env_dir="${SCRATCH}/${test_name}"
+    mkdir -p "${env_dir}/bin" "${env_dir}/app"
+
+    local path0="${SCRATCH}/${test_name}_p0"
+    local path1="${SCRATCH}/${test_name}_p1"
+    local path2="${SCRATCH}/${test_name}_p2"
+    mkdir -p "${path0}" "${path1}" "${path2}"
+    echo "photo" > "${path0}/photo.jpg"
+    echo "photo" > "${path1}/photo.jpg"
+    echo "photo" > "${path2}/photo.jpg"
+
+    GOTOHP_CALLS="${env_dir}/gotohp_calls.txt"
+    MULTI_PATH0="${path0}"
+    MULTI_PATH1="${path1}"
+    MULTI_PATH2="${path2}"
+
+    cat > "${env_dir}/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+EOF
+    chmod +x "${env_dir}/bin/gotohp"
+
+    cat > "${env_dir}/app/includes.sh" << HEREDOC
+#!/bin/bash
+CRON_CONFIG_FILE="\${HOME}/crontabs"
+function color() {
+    case \$1 in
+        red)    echo -e "\033[31m\$2\033[0m" ;;
+        green)  echo -e "\033[32m\$2\033[0m" ;;
+        yellow) echo -e "\033[33m\$2\033[0m" ;;
+        blue)   echo -e "\033[34m\$2\033[0m" ;;
+        none)   echo "\$2" ;;
+    esac
+}
+function init_env() {
+    SOURCE_PATHS=("${path0}" "${path1}" "${path2}")
+    ALBUM_NAMES=("Album0" "Album1" "Album2")
+    GOTOHP_THREADS_LIST=("" "" "")
+    GOTOHP_RECURSIVE_LIST=("" "" "")
+    GOTOHP_FORCE_LIST=("" "" "")
+    GOTOHP_DELETE_LIST=("" "" "")
+    GOTOHP_DISABLE_FILTER_LIST=("" "" "")
+    GOTOHP_DATE_FROM_FILENAME_LIST=("" "" "")
+    GOTOHP_LOG_LEVEL_LIST=("" "" "")
+    GOTOHP_CREDS_LIST=("" "" "")
+    GOTOHP_EMAIL_LIST=("" "" "")
+    CRON_LIST=("" "" "")
+    GOTOHP_THREADS="3"
+    GOTOHP_RECURSIVE="TRUE"
+    GOTOHP_FORCE="FALSE"
+    GOTOHP_DELETE="FALSE"
+    GOTOHP_DISABLE_FILTER="FALSE"
+    GOTOHP_DATE_FROM_FILENAME="FALSE"
+    GOTOHP_LOG_LEVEL="info"
+    GOTOHP_EMAIL=""
+    CRON_OVERLAP="${cron_overlap}"
+}
+HEREDOC
+
+    sed "s|^\. /app/includes\.sh$|. ${env_dir}/app/includes.sh|" \
+        "$(dirname "$0")/backup.sh" > "${env_dir}/app/backup.sh"
+
+    TEST_PATH="${env_dir}/bin:${PATH}"
+    TEST_BACKUP="${env_dir}/app/backup.sh"
+}
+
+# Test 20: PAIR_INDICES="1" — only pair 1 processed, pairs 0 and 2 skipped
+setup_env_multi "t20"
+RC=0
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t20_out.txt" 2>&1 || RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 20: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t20_out.txt"
+elif grep -q "upload ${MULTI_PATH0}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 20: pair 0 was processed but PAIR_INDICES=1 should skip it"
+    cat "${SCRATCH}/t20_out.txt"
+elif grep -q "upload ${MULTI_PATH2}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 20: pair 2 was processed but PAIR_INDICES=1 should skip it"
+    cat "${SCRATCH}/t20_out.txt"
+elif ! grep -q "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 20: pair 1 was NOT uploaded despite PAIR_INDICES=1"
+    cat "${SCRATCH}/t20_out.txt"
+else
+    pass "Test 20: PAIR_INDICES=1 — only pair 1 processed"
+fi
+
+# Test 21: PAIR_INDICES unset — all pairs processed (backwards compatibility)
+setup_env_multi "t21"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t21_out.txt" 2>&1 || RC=$?
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 21: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t21_out.txt"
+elif ! grep -q "upload ${MULTI_PATH0}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 21: pair 0 was NOT processed with PAIR_INDICES unset"
+    cat "${SCRATCH}/t21_out.txt"
+elif ! grep -q "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 21: pair 1 was NOT processed with PAIR_INDICES unset"
+    cat "${SCRATCH}/t21_out.txt"
+elif ! grep -q "upload ${MULTI_PATH2}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 21: pair 2 was NOT processed with PAIR_INDICES unset"
+    cat "${SCRATCH}/t21_out.txt"
+else
+    pass "Test 21: PAIR_INDICES unset — all 3 pairs processed (backwards compat)"
+fi
+
+########################################
+# Tests 22–25: CRON_OVERLAP behaviour
+########################################
+echo "--- Tests 22–25: CRON_OVERLAP behaviour ---"
+
+# Helper: create a 3-pair mock with a *slow* gotohp for a specific pair.
+# The slow pair's gotohp sleeps SLOW_SECS seconds before recording its call.
+# Arguments: test_name cron_overlap slow_pair_index slow_secs
+setup_env_multi_slow() {
+    local test_name="$1"
+    local cron_overlap="${2:-QUEUE}"
+    local slow_pair="${3:-1}"
+    local slow_secs="${4:-2}"
+
+    setup_env_multi "${test_name}" "${cron_overlap}"
+
+    local path_var="MULTI_PATH${slow_pair}"
+    local slow_path="${!path_var}"
+    local env_dir="${SCRATCH}/${test_name}"
+    local calls_file="${GOTOHP_CALLS}"
+
+    cat > "${env_dir}/bin/gotohp" << EOF
+#!/bin/bash
+if echo "\$*" | grep -q "${slow_path}"; then
+    sleep ${slow_secs}
+fi
+echo "\$*" >> "${calls_file}"
+EOF
+    chmod +x "${env_dir}/bin/gotohp"
+}
+
+# Test 22: CRON_OVERLAP=queue — second invocation waits and eventually runs.
+# Run 1 with slow gotohp; run 2 with same PAIR_INDICES should block until
+# run 1 finishes, then run itself.
+setup_env_multi_slow "t22" "QUEUE" 1 2
+
+RC1=0; RC2=0
+# Run 1 in background (holds lock while gotohp sleeps 2s)
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t22_run1.txt" 2>&1 &
+RUN1_PID=$!
+sleep 0.5   # let run 1 acquire the lock and start gotohp
+
+# Run 2 synchronously — should log "Waiting..." and block until run 1 finishes
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t22_run2.txt" 2>&1 || RC2=$?
+
+wait "${RUN1_PID}" 2>/dev/null || RC1=$?
+
+if [[ $RC2 -ne 0 ]]; then
+    fail "Test 22: run 2 exited with code ${RC2}"
+    cat "${SCRATCH}/t22_run2.txt"
+elif ! grep -q "Waiting for previous run" "${SCRATCH}/t22_run2.txt" 2>/dev/null; then
+    fail "Test 22: 'Waiting for previous run...' not logged by run 2 (queue mode)"
+    cat "${SCRATCH}/t22_run2.txt"
+else
+    # Count how many times pair 1 was uploaded (both runs should upload it)
+    UPLOAD_COUNT=$(grep -c "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+    if [[ "${UPLOAD_COUNT}" -ge 2 ]]; then
+        pass "Test 22: CRON_OVERLAP=queue — run 2 waited and then ran (${UPLOAD_COUNT} uploads)"
+    else
+        fail "Test 22: expected 2 uploads (both runs), got ${UPLOAD_COUNT}"
+        cat "${SCRATCH}/t22_run2.txt"
+    fi
+fi
+
+# Test 23: CRON_OVERLAP=multithread — second invocation runs concurrently (no lock).
+# Both invocations use the same PAIR_INDICES; with MULTITHREAD, neither blocks.
+setup_env_multi_slow "t23" "MULTITHREAD" 1 2
+
+RC2=0
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t23_run1.txt" 2>&1 &
+RUN1_PID=$!
+sleep 0.5
+
+# Run 2 should start immediately without waiting (no lock involved)
+START_T23=$(date +%s)
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t23_run2.txt" 2>&1 || RC2=$?
+END_T23=$(date +%s)
+ELAPSED_T23=$(( END_T23 - START_T23 ))
+
+wait "${RUN1_PID}" 2>/dev/null || true
+
+if [[ $RC2 -ne 0 ]]; then
+    fail "Test 23: run 2 exited with code ${RC2}"
+    cat "${SCRATCH}/t23_run2.txt"
+elif ! grep -q "Concurrent run" "${SCRATCH}/t23_run2.txt" 2>/dev/null; then
+    fail "Test 23: 'Concurrent run...' not logged by run 2 (multithread mode)"
+    cat "${SCRATCH}/t23_run2.txt"
+elif ! grep -q "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 23: pair 1 was NOT uploaded by run 2 in multithread mode"
+    cat "${SCRATCH}/t23_run2.txt"
+else
+    pass "Test 23: CRON_OVERLAP=multithread — run 2 started concurrently (no wait)"
+fi
+
+# Test 24: CRON_OVERLAP=skip — second invocation skipped when same group is running.
+# Run 1 with slow gotohp holds the lock; run 2 should skip and exit 0.
+setup_env_multi_slow "t24" "SKIP" 1 2
+
+RC1=0; RC2=0
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t24_run1.txt" 2>&1 &
+RUN1_PID=$!
+sleep 0.5   # let run 1 acquire the lock
+
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t24_run2.txt" 2>&1 || RC2=$?
+
+wait "${RUN1_PID}" 2>/dev/null || RC1=$?
+
+if [[ $RC2 -ne 0 ]]; then
+    fail "Test 24: run 2 should exit 0 when skipping, got code ${RC2}"
+    cat "${SCRATCH}/t24_run2.txt"
+elif ! grep -q "Skipping" "${SCRATCH}/t24_run2.txt" 2>/dev/null; then
+    fail "Test 24: 'Skipping...' not logged by run 2 (skip mode)"
+    cat "${SCRATCH}/t24_run2.txt"
+else
+    # Run 2 should have been skipped — only 1 upload from run 1
+    UPLOAD_COUNT=$(grep -c "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+    if [[ "${UPLOAD_COUNT}" -eq 1 ]]; then
+        pass "Test 24: CRON_OVERLAP=skip — run 2 skipped; only 1 upload recorded"
+    else
+        fail "Test 24: expected 1 upload (run 2 should be skipped), got ${UPLOAD_COUNT}"
+        cat "${SCRATCH}/t24_run2.txt"
+    fi
+fi
+
+# Test 25: inter-group concurrency — two different groups never block each other.
+# Pair 0 has a slow gotohp; pair 1 (different PAIR_INDICES) should run immediately.
+setup_env_multi_slow "t25" "QUEUE" 0 4
+
+PAIR_INDICES="0" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t25_grpA.txt" 2>&1 &
+GRPA_PID=$!
+sleep 0.5
+
+START_T25=$(date +%s)
+RC=0
+PAIR_INDICES="1" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t25_grpB.txt" 2>&1 || RC=$?
+END_T25=$(date +%s)
+ELAPSED_T25=$(( END_T25 - START_T25 ))
+
+wait "${GRPA_PID}" 2>/dev/null || true
+
+if [[ $RC -ne 0 ]]; then
+    fail "Test 25: group B exited with code ${RC}"
+    cat "${SCRATCH}/t25_grpB.txt"
+elif [[ ${ELAPSED_T25} -ge 3 ]]; then
+    fail "Test 25: group B took ${ELAPSED_T25}s — blocked by group A (should run concurrently)"
+    cat "${SCRATCH}/t25_grpB.txt"
+elif ! grep -q "upload ${MULTI_PATH1}" "${GOTOHP_CALLS}" 2>/dev/null; then
+    fail "Test 25: group B (pair 1) was NOT uploaded"
+    cat "${SCRATCH}/t25_grpB.txt"
+else
+    pass "Test 25: inter-group concurrency — group B ran in ${ELAPSED_T25}s without blocking group A"
+fi
+
+########################################
+# Test 26: build_schedule_groups edge case — empty CRON_N falls back to global
+########################################
+echo "--- Test 26: build_schedule_groups edge case: empty CRON_N → global ---"
+
+CRON="0 4 * * *"
+SOURCE_PATHS=("a" "b")
+CRON_LIST=("" "")   # both empty → both fall back to global
+build_schedule_groups
+if [[ "${#SCHEDULE_GROUPS[@]}" -eq 1 && "${SCHEDULE_GROUPS["0 4 * * *"]}" == "0,1" ]]; then
+    pass "Test 26: empty CRON_N entries correctly fall back to global CRON"
+else
+    fail "Test 26: expected '0 4 * * *'→'0,1', got: $(declare -p SCHEDULE_GROUPS)"
+fi
+
+########################################
+# Tests 27–28: cron_is_interval with explicit argument (per-group support)
+########################################
+echo "--- Tests 27–28: cron_is_interval per-group (accepts argument) ---"
+
+# Test 27: interval cron passed as argument → IS interval
+# Re-define using the updated signature from entrypoint.sh
+function cron_is_interval_with_arg() {
+    local cron_expr="${1:-${CRON}}"
+    local field
+    local -a cron_fields
+    read -ra cron_fields <<< "${cron_expr}"
+    for field in "${cron_fields[@]}"; do
+        if [[ "${field}" =~ ^\*/[1-9][0-9]*$ ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+if cron_is_interval_with_arg "*/15 * * * *"; then
+    pass "Test 27: cron_is_interval('*/15 * * * *') correctly identified as interval"
+else
+    fail "Test 27: cron_is_interval('*/15 * * * *') should be interval but was not"
+fi
+
+# Test 28: rigid cron passed as argument → NOT interval
+if cron_is_interval_with_arg "0 2 * * *"; then
+    fail "Test 28: cron_is_interval('0 2 * * *') should NOT be interval but was detected as one"
+else
+    pass "Test 28: cron_is_interval('0 2 * * *') correctly identified as non-interval"
 fi
 
 ########################################

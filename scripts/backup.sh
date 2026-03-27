@@ -77,6 +77,36 @@ color blue "Running backup at $(date +"%Y-%m-%d %H:%M:%S %Z")"
 
 init_env
 
+########################################
+# Handle per-group overlap locking when PAIR_INDICES is set.
+# Uses a lockfile keyed to PAIR_INDICES so different groups never block
+# each other, while same-group concurrency is controlled by CRON_OVERLAP.
+########################################
+if [[ -n "${PAIR_INDICES:-}" ]]; then
+    GROUP_HASH=$(printf '%s' "${PAIR_INDICES}" | md5sum | cut -d' ' -f1)
+    LOCK_FILE="/tmp/schedule-group-${GROUP_HASH}.lock"
+
+    case "${CRON_OVERLAP}" in
+        SKIP)
+            exec 9>"${LOCK_FILE}"
+            if ! flock -n 9; then
+                color yellow "Skipping — previous run of schedule group '${PAIR_INDICES}' is still active"
+                exit 0
+            fi
+            ;;
+        MULTITHREAD)
+            color blue "Concurrent run of schedule group '${PAIR_INDICES}' starting (multithread mode)"
+            ;;
+        QUEUE|*)
+            exec 9>"${LOCK_FILE}"
+            if ! flock -n 9; then
+                color blue "Waiting for previous run of schedule group '${PAIR_INDICES}' to finish…"
+                flock 9
+            fi
+            ;;
+    esac
+fi
+
 if [[ "${#SOURCE_PATHS[@]}" -eq 0 ]]; then
     color red "No source paths configured."
     color red "Set SOURCE_PATH (single source) or SOURCE_PATH_0, SOURCE_PATH_1, … (multiple sources)."
@@ -85,7 +115,17 @@ fi
 
 HAS_ERROR="FALSE"
 
-for i in "${!SOURCE_PATHS[@]}"; do
+# Determine which pair indices to process.
+# If PAIR_INDICES is set (comma-separated), process only those pairs.
+# If unset, process all pairs (backwards compatibility).
+INDICES_TO_PROCESS=()
+if [[ -n "${PAIR_INDICES:-}" ]]; then
+    IFS=',' read -ra INDICES_TO_PROCESS <<< "${PAIR_INDICES}"
+else
+    INDICES_TO_PROCESS=("${!SOURCE_PATHS[@]}")
+fi
+
+for i in "${INDICES_TO_PROCESS[@]}"; do
     SOURCE="${SOURCE_PATHS[${i}]}"
     ALBUM="${ALBUM_NAMES[${i}]}"
 
