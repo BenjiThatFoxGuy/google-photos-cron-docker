@@ -30,9 +30,22 @@ function color() {
 function export_env_file() {
     if [[ -f "/.env" ]]; then
         color blue "Found /.env file, exporting variables"
-        set -a
-        source <(cat "/.env" | sed -e '/^#/d;/^\s*$/d' -e 's/\(\w*\)[ \t]*=[ \t]*\(.*\)/DOTENV_\1=\2/')
-        set +a
+        local line var_name value
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Trim leading whitespace
+            line="${line#"${line%%[![:space:]]*}"}"
+            # Trim trailing whitespace
+            line="${line%"${line##*[![:space:]]}"}"
+            # Skip empty lines and comments
+            [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+            # Match VAR=VALUE where VAR is a valid shell variable name
+            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                var_name=${BASH_REMATCH[1]}
+                value=${BASH_REMATCH[2]}
+                # Export as-is (no shell evaluation), prefixed with DOTENV_
+                export "DOTENV_${var_name}=${value}"
+            fi
+        done < "/.env"
     fi
 }
 
@@ -58,8 +71,14 @@ function get_env() {
         VALUE="${!VAR}"
     elif [[ -n "${!VAR_FILE:-}" ]]; then
         VALUE="$(cat "${!VAR_FILE}")"
+        VALUE="${VALUE%$'\r\n'}"
+        VALUE="${VALUE%$'\n'}"
+        VALUE="${VALUE%$'\r'}"
     elif [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
         VALUE="$(cat "${!VAR_DOTENV_FILE}")"
+        VALUE="${VALUE%$'\r\n'}"
+        VALUE="${VALUE%$'\n'}"
+        VALUE="${VALUE%$'\r'}"
     elif [[ -n "${!VAR_DOTENV:-}" ]]; then
         VALUE="${!VAR_DOTENV}"
     fi
@@ -114,9 +133,7 @@ function init_env() {
 
     # TIMEZONE
     get_env TIMEZONE
-    local TIMEZONE_MATCHED_COUNT
-    TIMEZONE_MATCHED_COUNT=$(ls "/usr/share/zoneinfo/${TIMEZONE}" 2>/dev/null | wc -l)
-    if [[ "${TIMEZONE_MATCHED_COUNT}" -ne 1 ]]; then
+    if [[ -z "${TIMEZONE}" || ( ! -f "/usr/share/zoneinfo/${TIMEZONE}" && ! -L "/usr/share/zoneinfo/${TIMEZONE}" ) ]]; then
         TIMEZONE="UTC"
     fi
 

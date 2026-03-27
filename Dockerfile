@@ -3,7 +3,7 @@
 # "//go:build !cli" so that it (and its Wails/webkit2gtk dependency) is
 # excluded when compiling with -tags cli.  The result is a pure-Go,
 # statically-linked binary that runs on Alpine without any GUI libraries.
-FROM golang:1.26-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
 

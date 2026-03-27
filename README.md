@@ -189,7 +189,7 @@ docker build -t google-photos-cron-docker .
 
 The Dockerfile uses a two-stage build:
 
-1. **Builder** (`golang:1.26-alpine`) — clones the gotohp source at the pinned
+1. **Builder** (`golang:1.24-alpine`) — clones the gotohp source at the pinned
    tag, patches `backend/wails_app.go` to exclude the Wails GUI layer when
    compiled with `-tags cli`, and produces a static binary with
    `CGO_ENABLED=0`.

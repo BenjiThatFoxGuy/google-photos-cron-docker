@@ -14,9 +14,7 @@ function configure_timezone() {
 # if it is not already present.
 ########################################
 function configure_cron() {
-    local FIND_CRON_COUNT
-    FIND_CRON_COUNT="$(grep -c 'backup.sh' "${CRON_CONFIG_FILE}" 2>/dev/null || true)"
-    if [[ "${FIND_CRON_COUNT}" -eq 0 ]]; then
+    if ! grep -q 'backup.sh' "${CRON_CONFIG_FILE}" 2>/dev/null; then
         echo "${CRON} bash /app/backup.sh" >> "${CRON_CONFIG_FILE}"
         color blue "Cron job registered: ${CRON}"
     fi
