@@ -81,7 +81,17 @@ for i in "${!SOURCE_PATHS[@]}"; do
         FIND_DEPTH_ARGS=("-maxdepth" "1")
     fi
 
-    if [[ -z "$(find "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f -print -quit 2>/dev/null)" ]]; then
+    # Pre-flight check: distinguish "no files" from a real find failure so that
+    # permission errors or unreadable mounts are not silently treated as empty.
+    FIND_OUTPUT="$(find -- "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f -print -quit 2>&1)"
+    FIND_STATUS=$?
+    if [[ ${FIND_STATUS} -ne 0 ]]; then
+        color red "Error scanning source path (find failed), skipping: ${SOURCE}"
+        color red "find output: ${FIND_OUTPUT}"
+        HAS_ERROR="TRUE"
+        continue
+    fi
+    if [[ -z "${FIND_OUTPUT}" ]]; then
         color yellow "No files found in source path, skipping: ${SOURCE}"
         continue
     fi

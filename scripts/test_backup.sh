@@ -256,7 +256,7 @@ mkdir -p "${MIXED}/subdir" "${EMPTY6}"
 echo "photo" > "${MIXED}/direct.jpg"          # direct file  → should be picked up
 echo "photo" > "${MIXED}/subdir/nested.jpg"   # file in subdir → ignored by gotohp
 
-setup_env "t6" "${MIXED}" "${EMPTY6}" "FALSE"
+setup_env "t6" "${EMPTY6}" "${MIXED}" "FALSE"
 RC=0
 PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t6_out.txt" 2>&1 || RC=$?
 
