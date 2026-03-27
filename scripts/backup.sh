@@ -69,6 +69,11 @@ for i in "${!SOURCE_PATHS[@]}"; do
         continue
     fi
 
+    if [[ -z "$(find "${SOURCE}" -type f 2>/dev/null | head -1)" ]]; then
+        color yellow "No files found in source path, skipping: ${SOURCE}"
+        continue
+    fi
+
     build_gotohp_flags "${i}"
     UPLOAD_FLAGS=("${GOTOHP_FLAGS[@]}")
     if [[ -n "${ALBUM}" ]]; then
