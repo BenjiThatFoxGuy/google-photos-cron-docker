@@ -394,6 +394,67 @@ else
 fi
 
 ########################################
+# Tests 10–14: cron_is_interval — validate the interval-detection logic
+# that drives the "run backup immediately on container start" feature.
+#
+# The function is defined inline here (mirroring entrypoint.sh) so the
+# tests have no dependency on parsing the entrypoint source file.
+########################################
+echo "--- Tests 10–14: cron_is_interval detection ---"
+
+function cron_is_interval() {
+    local field
+    local -a cron_fields
+    read -ra cron_fields <<< "${CRON}"
+    for field in "${cron_fields[@]}"; do
+        if [[ "${field}" =~ ^\*/[0-9]+$ ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Test 10: classic interval cron (*/10 * * * *) → IS interval
+CRON="*/10 * * * *"
+if cron_is_interval; then
+    pass "Test 10: '${CRON}' correctly identified as interval"
+else
+    fail "Test 10: '${CRON}' should be interval but was not detected"
+fi
+
+# Test 11: rigid fixed-minute cron (0 * * * *) → NOT interval
+CRON="0 * * * *"
+if cron_is_interval; then
+    fail "Test 11: '${CRON}' should NOT be interval but was detected as one"
+else
+    pass "Test 11: '${CRON}' correctly identified as non-interval"
+fi
+
+# Test 12: rigid two-field cron (0 2 * * *) → NOT interval
+CRON="0 2 * * *"
+if cron_is_interval; then
+    fail "Test 12: '${CRON}' should NOT be interval but was detected as one"
+else
+    pass "Test 12: '${CRON}' correctly identified as non-interval"
+fi
+
+# Test 13: interval in a non-minute field (0 */2 * * *) → IS interval
+CRON="0 */2 * * *"
+if cron_is_interval; then
+    pass "Test 13: '${CRON}' correctly identified as interval (*/2 in hour field)"
+else
+    fail "Test 13: '${CRON}' should be interval but was not detected"
+fi
+
+# Test 14: default cron (5 * * * *) → NOT interval (fixed minute, every hour)
+CRON="5 * * * *"
+if cron_is_interval; then
+    fail "Test 14: '${CRON}' should NOT be interval but was detected as one"
+else
+    pass "Test 14: '${CRON}' correctly identified as non-interval"
+fi
+
+########################################
 ########################################
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
