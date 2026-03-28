@@ -106,6 +106,7 @@ function get_source_album_list() {
     GOTOHP_LOG_LEVEL_LIST=()
     GOTOHP_CREDS_LIST=()
     GOTOHP_EMAIL_LIST=()
+    CRON_LIST=()
 
     local i=0
     local SOURCE_PATH_X_REFER
@@ -134,6 +135,7 @@ function get_source_album_list() {
         local LOG_LEVEL_X="GOTOHP_LOG_LEVEL_${i}"
         local CREDS_X="GOTOHP_CREDS_${i}"
         local EMAIL_X="GOTOHP_EMAIL_${i}"
+        local CRON_X="CRON_${i}"
 
         get_env "${THREADS_X}"
         get_env "${RECURSIVE_X}"
@@ -144,6 +146,7 @@ function get_source_album_list() {
         get_env "${LOG_LEVEL_X}"
         get_env "${CREDS_X}"
         get_env "${EMAIL_X}"
+        get_env "${CRON_X}"
 
         GOTOHP_THREADS_LIST+=("${!THREADS_X}")
         GOTOHP_RECURSIVE_LIST+=("${!RECURSIVE_X}")
@@ -154,13 +157,35 @@ function get_source_album_list() {
         GOTOHP_LOG_LEVEL_LIST+=("${!LOG_LEVEL_X}")
         GOTOHP_CREDS_LIST+=("${!CREDS_X}")
         GOTOHP_EMAIL_LIST+=("${!EMAIL_X}")
+        CRON_LIST+=("${!CRON_X}")
 
         ((i++))
     done
 }
 
 ########################################
-# Initialise all environment variables
+# Build an associative array (SCHEDULE_GROUPS) mapping each effective
+# cron expression to a comma-separated list of pair indices that share it.
+# Pairs without a CRON_N override use the global CRON value.
+# Arguments:
+#     None
+# Outputs:
+#     SCHEDULE_GROUPS associative array (global)
+########################################
+function build_schedule_groups() {
+    declare -gA SCHEDULE_GROUPS=()
+    local i cron_expr
+    for i in "${!SOURCE_PATHS[@]}"; do
+        cron_expr="${CRON_LIST[${i}]:-${CRON}}"
+        if [[ -z "${SCHEDULE_GROUPS[${cron_expr}]+_}" ]]; then
+            SCHEDULE_GROUPS["${cron_expr}"]="${i}"
+        else
+            SCHEDULE_GROUPS["${cron_expr}"]="${SCHEDULE_GROUPS[${cron_expr}]},${i}"
+        fi
+    done
+}
+
+########################################
 # and print the resolved configuration.
 # Arguments:
 #     None
@@ -171,6 +196,10 @@ function init_env() {
     # CRON
     get_env CRON
     CRON="${CRON:-"5 * * * *"}"
+
+    # CRON_OVERLAP — intra-group overlap behaviour: queue (default), multithread, skip
+    get_env CRON_OVERLAP
+    CRON_OVERLAP=$(echo "${CRON_OVERLAP:-"queue"}" | tr '[:lower:]' '[:upper:]')
 
     # TIMEZONE
     get_env TIMEZONE
@@ -224,6 +253,7 @@ function init_env() {
 
     color yellow "========================================"
     color yellow "CRON: ${CRON}"
+    color yellow "CRON_OVERLAP: ${CRON_OVERLAP}"
     color yellow "TIMEZONE: ${TIMEZONE}"
     color yellow "GOTOHP_THREADS: ${GOTOHP_THREADS}"
     color yellow "GOTOHP_RECURSIVE: ${GOTOHP_RECURSIVE}"
@@ -245,6 +275,7 @@ function init_env() {
         [[ -n "${GOTOHP_LOG_LEVEL_LIST[${i}]}" ]]          && color yellow "  GOTOHP_LOG_LEVEL_${i}: ${GOTOHP_LOG_LEVEL_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_CREDS_LIST[${i}]}" ]]              && color yellow "  GOTOHP_CREDS_${i}: <set> (override)"
         [[ -n "${GOTOHP_EMAIL_LIST[${i}]}" ]]              && color yellow "  GOTOHP_EMAIL_${i}: ${GOTOHP_EMAIL_LIST[${i}]} (override)"
+        [[ -n "${CRON_LIST[${i}]}" ]]                      && color yellow "  CRON_${i}: ${CRON_LIST[${i}]} (override)"
     done
     color yellow "========================================"
 }

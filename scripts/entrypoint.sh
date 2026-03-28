@@ -10,25 +10,35 @@ function configure_timezone() {
 }
 
 ########################################
-# Append the backup cron job to the crontabs file
-# if it is not already present.
+# Write crontab entries for each schedule group.
+# Each group is one cron expression with one or more pair indices.
+# Requires SCHEDULE_GROUPS to be built before calling (see build_schedule_groups).
 ########################################
 function configure_cron() {
-    if ! grep -q 'backup.sh' "${CRON_CONFIG_FILE}" 2>/dev/null; then
-        echo "${CRON} bash /app/backup.sh" >> "${CRON_CONFIG_FILE}"
-        color blue "Cron job registered: ${CRON}"
+    if grep -q 'backup.sh' "${CRON_CONFIG_FILE}" 2>/dev/null; then
+        return
     fi
+
+    local cron_expr pair_indices
+    for cron_expr in "${!SCHEDULE_GROUPS[@]}"; do
+        pair_indices="${SCHEDULE_GROUPS[${cron_expr}]}"
+        echo "${cron_expr} env PAIR_INDICES=${pair_indices} bash /app/backup.sh" >> "${CRON_CONFIG_FILE}"
+        color blue "Cron job registered: ${cron_expr} (pairs: ${pair_indices})"
+    done
 }
 
 ########################################
 # Return 0 if the cron expression contains at least one interval-style
 # step field (*/N), meaning it fires "once every N" units rather than at
 # a fixed point in time (e.g. "*/10 * * * *" → true; "0 * * * *" → false).
+# Arguments:
+#     cron expression (optional; defaults to global $CRON)
 ########################################
 function cron_is_interval() {
+    local cron_expr="${1:-${CRON}}"
     local field
     local -a cron_fields
-    read -ra cron_fields <<< "${CRON}"
+    read -ra cron_fields <<< "${cron_expr}"
     for field in "${cron_fields[@]}"; do
         if [[ "${field}" =~ ^\*/[1-9][0-9]*$ ]]; then
             return 0
@@ -76,6 +86,7 @@ function setup_credentials() {
 }
 
 init_env
+build_schedule_groups
 configure_timezone
 setup_credentials
 configure_cron
@@ -92,14 +103,18 @@ fi
 # immediate backup so users don't wait unnecessarily on container start.
 # Rigid crons (e.g. "0 * * * *") fire at a predictable fixed time and are
 # left to fire naturally on their own schedule.
-if cron_is_interval; then
-    color blue "Interval-style cron detected — running initial backup immediately"
-    bash /app/backup.sh
-    initial_backup_rc=$?
-    if [[ ${initial_backup_rc} -ne 0 ]]; then
-        color red "Initial backup failed with exit code ${initial_backup_rc}; continuing to start scheduler"
+# This check is applied per schedule group.
+for cron_expr in "${!SCHEDULE_GROUPS[@]}"; do
+    if cron_is_interval "${cron_expr}"; then
+        pair_indices="${SCHEDULE_GROUPS[${cron_expr}]}"
+        color blue "Interval-style cron detected — running initial backup immediately (pairs: ${pair_indices})"
+        initial_backup_rc=0
+        PAIR_INDICES="${pair_indices}" bash /app/backup.sh || initial_backup_rc=$?
+        if [[ ${initial_backup_rc} -ne 0 ]]; then
+            color red "Initial backup failed with exit code ${initial_backup_rc}; continuing to start scheduler"
+        fi
     fi
-fi
+done
 
 color blue "Starting supercronic scheduler"
 exec supercronic -passthrough-logs -no-reap -quiet "${CRON_CONFIG_FILE}"

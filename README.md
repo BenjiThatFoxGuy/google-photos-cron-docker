@@ -14,6 +14,7 @@ easy to adopt if you are already familiar with that project.
 
 - Scheduled uploads via cron (powered by supercronic)
 - Single **or** multiple source → album pairs per container
+- Per-pair schedule overrides (`CRON_N`) with automatic grouping
 - All `gotohp upload` flags exposed as environment variables
 - Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
 - Credentials stored in a Docker volume — survive container restarts
@@ -54,10 +55,45 @@ docker compose run --rm photos-backup backup
 
 ### Scheduling
 
-| Variable   | Default        | Description               |
-|------------|----------------|---------------------------|
-| `CRON`     | `5 * * * *`    | Cron expression           |
-| `TIMEZONE` | `UTC`          | Container timezone (e.g. `America/New_York`) |
+| Variable        | Default        | Description               |
+|-----------------|----------------|---------------------------|
+| `CRON`          | `5 * * * *`    | Global cron expression (applies to all pairs without a `CRON_N` override) |
+| `TIMEZONE`      | `UTC`          | Container timezone (e.g. `America/New_York`) |
+| `CRON_OVERLAP`  | `queue`        | What to do when a schedule group fires while its previous run is still active (see [Schedule overlap modes](#schedule-overlap-modes)) |
+
+#### Per-pair schedule overrides
+
+Each source/album pair can run on its own schedule by setting `CRON_N`.
+Pairs that share the same effective schedule (including all pairs without a
+`CRON_N` override) are **bundled into a single cron job** and processed
+sequentially, preserving the existing behaviour for the common case.
+
+| Variable   | Description |
+|------------|-------------|
+| `CRON_N`   | Cron expression for pair N (e.g. `CRON_0="0 2 * * *"`, `CRON_1="*/30 * * * *"`) |
+
+Example — camera roll syncs every 30 minutes; screenshots sync nightly:
+
+```yaml
+CRON: "0 2 * * *"          # default for pairs without an override
+CRON_1: "*/30 * * * *"     # pair 1 (screenshots) on its own faster schedule
+```
+
+This produces two cron groups:
+- `0 2 * * *` — pair 0 (and any other pairs without a `CRON_N`)
+- `*/30 * * * *` — pair 1
+
+Different schedule groups always run **concurrently** — they never block each
+other.  The `CRON_OVERLAP` variable controls what happens only when the
+**same** group fires before its previous invocation has finished.
+
+#### Schedule overlap modes
+
+| `CRON_OVERLAP` value | Behaviour |
+|---|---|
+| `queue` **(default)** | The new invocation waits until the currently-running invocation of the same group finishes, then runs. The triggered run is never skipped. |
+| `multithread` | The new invocation starts immediately alongside the already-running invocation. No locking. |
+| `skip` | The new invocation is skipped if the same group is already running. A warning is logged. |
 
 ### Credentials
 
@@ -236,6 +272,33 @@ volumes:
 ```yaml
 SOURCE_PATH: /organised
 ALBUM_NAME: "AUTO"   # creates one album per sub-folder
+```
+
+### Per-pair schedules
+
+```yaml
+services:
+  photos-backup:
+    image: ghcr.io/benjithatfoxguy/google-photos-cron-docker:latest
+    environment:
+      CRON: "0 2 * * *"          # default — pairs 0 and 2 run nightly at 02:00
+      CRON_1: "*/30 * * * *"     # pair 1 runs every 30 minutes
+      CRON_OVERLAP: "queue"      # queue overlapping runs (default)
+      GOTOHP_CREDS: "androidId=..."
+      SOURCE_PATH_0: /camera
+      ALBUM_NAME_0: "Camera Roll"
+      SOURCE_PATH_1: /screenshots
+      ALBUM_NAME_1: "Screenshots"
+      SOURCE_PATH_2: /videos
+      ALBUM_NAME_2: "Videos"
+    volumes:
+      - /mnt/camera:/camera:ro
+      - /mnt/screenshots:/screenshots:ro
+      - /mnt/videos:/videos:ro
+      - gotohp-config:/config
+
+volumes:
+  gotohp-config:
 ```
 
 ### Two Google accounts (per-pair credential overrides)
