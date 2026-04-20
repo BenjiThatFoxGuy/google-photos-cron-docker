@@ -66,19 +66,16 @@ docker compose run --rm photos-backup backup
 
 | Variable              | Default | Description |
 |-----------------------|---------|-------------|
-| `WEBUI_ENABLE`        | `FALSE` | Enable the lightweight prototype web UI |
 | `WEBUI_BIND`          | `0.0.0.0` | Interface/address for the web UI HTTP server |
 | `WEBUI_PORT`          | `5572`  | Port exposed by the web UI HTTP server |
-| `WEBUI_OVERRIDE_FILE` | `/config/webui-overrides.env` | File where web UI overrides are stored |
 
-When enabled, the UI serves:
+The web UI is automatically enabled if either `WEBUI_BIND` or `WEBUI_PORT` is specified. When enabled, the UI serves:
 
 - Current backup status (`/tmp/backup-status.env`)
 - Registered cron entries
 - A plain-text editor for runtime overrides (`VAR=VALUE` lines)
 
-Runtime overrides take precedence over the container environment and are applied
-on the next backup invocation.
+Runtime overrides are saved directly to `/.env` and applied on the next backup invocation.
 
 > **Security note:** The prototype web UI does **not** include authentication.
 > Keep it on trusted networks only. Prefer binding to localhost (e.g.

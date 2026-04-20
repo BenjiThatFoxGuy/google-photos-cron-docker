@@ -29,9 +29,9 @@ services:
       GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
 
-      # Optional experimental web UI
-      # WEBUI_ENABLE: "TRUE"
+      # Optional experimental web UI (auto-enabled if WEBUI_BIND or WEBUI_PORT is set)
       # WEBUI_PORT: "5572"
+      # WEBUI_BIND: "127.0.0.1"
     volumes:
       # If GOTOHP_DELETE is TRUE, this mount must be read-write (no :ro).
       # If you are not using GOTOHP_DELETE, you can add :ro for safety.

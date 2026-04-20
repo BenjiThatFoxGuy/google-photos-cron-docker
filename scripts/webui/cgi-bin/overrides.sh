@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-WEBUI_OVERRIDE_FILE="${WEBUI_OVERRIDE_FILE:-/config/webui-overrides.env}"
+CONFIG_FILE="/.env"
 MAX_BODY_BYTES=65535
 
 function http_ok_text() {
@@ -22,8 +22,8 @@ function http_bad_request() {
 case "${REQUEST_METHOD:-GET}" in
     GET)
         http_ok_text
-        if [[ -f "${WEBUI_OVERRIDE_FILE}" ]]; then
-            cat "${WEBUI_OVERRIDE_FILE}"
+        if [[ -f "${CONFIG_FILE}" ]]; then
+            cat "${CONFIG_FILE}"
         fi
         ;;
     POST)
@@ -57,13 +57,12 @@ case "${REQUEST_METHOD:-GET}" in
         done <<< "${body}"
 
         umask 077
-        mkdir -p "$(dirname "${WEBUI_OVERRIDE_FILE}")"
-        tmp_file="${WEBUI_OVERRIDE_FILE}.tmp.$$"
+        tmp_file="${CONFIG_FILE}.tmp.$$"
         printf '%s' "${body}" > "${tmp_file}"
-        mv "${tmp_file}" "${WEBUI_OVERRIDE_FILE}"
+        mv "${tmp_file}" "${CONFIG_FILE}"
 
         http_ok_text
-        echo "Overrides saved to ${WEBUI_OVERRIDE_FILE}"
+        echo "Overrides saved to ${CONFIG_FILE}"
         ;;
     *)
         http_bad_request "Unsupported method: ${REQUEST_METHOD:-UNKNOWN}"
