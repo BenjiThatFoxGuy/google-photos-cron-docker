@@ -15,6 +15,13 @@ on:
 
   # Publish a nightly image on every PR push so changes can be tested
   pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
 
   # Allow ad-hoc runs from the Actions tab
   workflow_dispatch:
@@ -28,8 +35,63 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  gate:
+    name: Evaluate trigger
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+    steps:
+      - name: Decide whether this run should build
+        id: decide
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const eventName = context.eventName;
+
+            // Always allow manual/scheduled/tag builds.
+            if (eventName === 'schedule' || eventName === 'workflow_dispatch') {
+              core.setOutput('should_build', 'true');
+              return;
+            }
+
+            if (eventName === 'pull_request') {
+              const pr = context.payload.pull_request;
+              const isSameRepo = pr?.head?.repo?.full_name === `${context.repo.owner}/${context.repo.repo}`;
+              const targetsMain = pr?.base?.ref === 'main';
+              core.setOutput('should_build', String(isSameRepo && targetsMain));
+              return;
+            }
+
+            if (eventName === 'push') {
+              const ref = context.ref || '';
+              const isTag = ref.startsWith('refs/tags/');
+              if (isTag) {
+                core.setOutput('should_build', 'true');
+                return;
+              }
+
+              const branch = ref.replace('refs/heads/', '');
+              const head = `${context.repo.owner}:${branch}`;
+              const { data: pulls } = await github.rest.pulls.list({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                head,
+                per_page: 1,
+              });
+
+              // If this branch already has an open PR, prefer the pull_request
+              // synchronize build and skip this push-triggered duplicate.
+              core.setOutput('should_build', pulls.length > 0 ? 'false' : 'true');
+              return;
+            }
+
+            core.setOutput('should_build', 'false');
+
   build-and-push:
     name: Build & push
+    needs: gate
+    if: needs.gate.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
