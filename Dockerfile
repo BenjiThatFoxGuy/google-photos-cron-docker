@@ -87,7 +87,7 @@ FROM alpine:3.21
 ENV XDG_CONFIG_HOME=/config \
     LOCALTIME_FILE="/tmp/localtime"
 
-RUN apk add --no-cache bash supercronic tzdata \
+RUN apk add --no-cache bash busybox-extras supercronic tzdata \
     && ln -sf "${LOCALTIME_FILE}" /etc/localtime
 
 COPY --from=builder /usr/local/bin/gotohp /usr/local/bin/gotohp
