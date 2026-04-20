@@ -1,17 +1,23 @@
 # ── Stage 1: build gotohp CLI binary ──────────────────────────────────────────
-# We clone the gotohp source and apply three patches so that the Wails GUI
+# We clone the gotohp source and apply patches/ on top so that the Wails GUI
 # library (which requires CGo/webkit2gtk) is excluded when compiling with
-# -tags cli.  The result is a pure-Go, statically-linked binary that runs
-# on Alpine without any GUI libraries.
+# -tags cli, and to add CLI-specific enhancements.  The result is a pure-Go,
+# statically-linked binary that runs on Alpine without any GUI libraries.
 #
-# Patches applied:
-#   1. backend/wails_app.go   – prepend "//go:build !cli" (wraps the Wails
-#      app adapter so it is skipped in CLI builds).
-#   2. backend/album.go       – strip the Wails import and its init() block,
-#      then re-create them in backend/album_gui.go guarded by "//go:build !cli".
-#   3. backend/upload.go      – same treatment as album.go, via upload_gui.go.
-#   4. cli.go                 – supply an os.Pipe() reader to tea.NewProgram so
-#      Bubble Tea uses an epoll-safe fd instead of stdin (/dev/null in cron).
+# To add or modify a patch:
+#   1. Edit the relevant .patch file in patches/ (or add a new one, numbered
+#      sequentially: 0005-description.patch).
+#   2. To regenerate patches after upstream changes:
+#        git clone --depth 1 --branch <NEW_VERSION> https://github.com/xob0t/gotohp /tmp/gotohp
+#        cd /tmp/gotohp && git am /path/to/patches/*.patch
+#      If git am fails, resolve conflicts, then: git am --continue
+#      Re-export with: git format-patch HEAD~N -o patches/
+#
+# Patches currently applied (see patches/ directory for full diffs):
+#   0001 – backend/wails_app.go:   guard with //go:build !cli
+#   0002 – backend/album.go:       split Wails init() into album_gui.go
+#   0003 – backend/upload.go:      split Wails init() into upload_gui.go
+#   0004 – cli.go:                 supply os.Pipe() to Bubble Tea for epoll safety
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
@@ -23,56 +29,10 @@ RUN git clone --depth 1 --branch ${GOTOHP_VERSION} \
 
 WORKDIR /gotohp
 
-# Patch 1: guard wails_app.go so it is excluded from CLI builds.
-# Only prepend the build constraint when it isn't already present, so that
-# a future upstream addition of a //go:build line won't produce duplicate
-# constraints and break compilation.
-RUN if ! grep -q '^//go:build' backend/wails_app.go; then \
-        { printf '//go:build !cli\n\n'; cat backend/wails_app.go; } \
-            > /tmp/wails_app.go \
-        && mv /tmp/wails_app.go backend/wails_app.go; \
-    fi
-
-# Patch 2: move the Wails-dependent init() out of album.go into a new
-# album_gui.go file that is excluded from CLI builds.
-# Post-sed checks ensure the sed patterns matched: if the Wails import or any
-# RegisterEvent call is still present in album.go the build is aborted immediately.
-RUN sed -i '/wailsapp\/wails/d' backend/album.go \
-    && sed -i '/^func init() {$/,/^}$/d' backend/album.go \
-    && if grep -q 'wailsapp/wails\|RegisterEvent' backend/album.go; then \
-           echo 'Error: Wails import or RegisterEvent calls still present in backend/album.go after sed edits'; exit 1; \
-       fi \
-    && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[AlbumStatus]("albumProgress")\n\tapplication.RegisterEvent[AlbumStatus]("albumComplete")\n\tapplication.RegisterEvent[AlbumError]("albumError")\n}\n' \
-        > backend/album_gui.go
-
-# Patch 3: same treatment for upload.go → upload_gui.go.
-# Validation confirms that neither the Wails import nor any RegisterEvent
-# call remains in upload.go after the sed edits.
-RUN sed -i '/wailsapp\/wails/d' backend/upload.go \
-    && sed -i '/^func init() {$/,/^}$/d' backend/upload.go \
-    && if grep -q 'wailsapp/wails\|RegisterEvent' backend/upload.go; then \
-           echo 'Error: Wails import or RegisterEvent calls still present in backend/upload.go after sed edits'; exit 1; \
-       fi \
-    && printf '//go:build !cli\n\npackage backend\n\nimport "github.com/wailsapp/wails/v3/pkg/application"\n\nfunc init() {\n\tapplication.RegisterEvent[UploadBatchStart]("uploadStart")\n\tapplication.RegisterEvent[application.Void]("uploadStop")\n\tapplication.RegisterEvent[FileUploadResult]("FileStatus")\n\tapplication.RegisterEvent[ThreadStatus]("ThreadStatus")\n\tapplication.RegisterEvent[application.Void]("uploadCancel")\n\tapplication.RegisterEvent[int64]("uploadTotalBytes")\n\tapplication.RegisterEvent[FilesDroppedEvent]("files-dropped")\n\tapplication.RegisterEvent[StartUploadEvent]("startUpload")\n}\n' \
-        > backend/upload_gui.go
-
-# Patch 4: supply an os.Pipe() read end as Bubble Tea's input so that the
-# cancelreader package has an epoll-safe file descriptor.  Using os.Stdin
-# directly fails in headless Docker cron jobs where stdin is /dev/null:
-#   "error running TUI: error creating cancelreader: add reader to epoll interest list"
-# A pipe fd is always a valid epoll target on Linux, solving both the original
-# /dev/tty error and the newer epoll registration error.
-RUN if ! grep -q '"os"' cli.go; then \
-        awk '/^import \(/{print; print "\t\"os\""; next} {print}' cli.go > /tmp/cli.go \
-        && mv /tmp/cli.go cli.go; \
-    fi \
-    && sed -i 's|p := tea.NewProgram(model)|r, w, _ := os.Pipe(); if w != nil { w.Close() }; if r == nil { r = os.Stdin }; p := tea.NewProgram(model, tea.WithInput(r))|' cli.go \
-    && if ! grep -q '"os"' cli.go; then \
-           echo 'Error: "os" import not found in cli.go after patch'; exit 1; \
-       fi \
-    && if ! grep -q 'tea.WithInput(r)' cli.go; then \
-           echo 'Error: tea.WithInput(r) not found in cli.go after patch'; exit 1; \
-       fi
+# Apply all patches in order.  git am aborts with clear diff context on failure,
+# making it immediately obvious which upstream change broke a patch.
+COPY patches/ /patches/
+RUN git am /patches/*.patch
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \

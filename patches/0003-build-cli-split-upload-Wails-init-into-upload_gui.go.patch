@@ -1,0 +1,67 @@
+From ec21657a1a3b12f9efde6536e57899aa253898de Mon Sep 17 00:00:00 2001
+From: Build <patch@build>
+Date: Mon, 20 Apr 2026 23:18:38 +0000
+Subject: [PATCH 3/4] build(cli): split upload Wails init() into upload_gui.go
+
+Same treatment as album_gui.go: moves all Wails RegisterEvent calls out
+of upload.go into upload_gui.go which is excluded from CLI builds.
+---
+ backend/upload.go     | 11 -----------
+ backend/upload_gui.go | 16 ++++++++++++++++
+ 2 files changed, 16 insertions(+), 11 deletions(-)
+ create mode 100644 backend/upload_gui.go
+
+diff --git a/backend/upload.go b/backend/upload.go
+index 7db5dca..802e7bc 100644
+--- a/backend/upload.go
++++ b/backend/upload.go
+@@ -9,7 +9,6 @@ import (
+ 	"strings"
+ 	"sync"
+ 
+-	"github.com/wailsapp/wails/v3/pkg/application"
+ )
+ 
+ // FilesDroppedEvent is emitted when files are dropped on any drop zone
+@@ -23,16 +22,6 @@ type StartUploadEvent struct {
+ 	Files []string `json:"files"`
+ }
+ 
+-func init() {
+-	application.RegisterEvent[UploadBatchStart]("uploadStart")
+-	application.RegisterEvent[application.Void]("uploadStop")
+-	application.RegisterEvent[FileUploadResult]("FileStatus")
+-	application.RegisterEvent[ThreadStatus]("ThreadStatus")
+-	application.RegisterEvent[application.Void]("uploadCancel")
+-	application.RegisterEvent[int64]("uploadTotalBytes")
+-	application.RegisterEvent[FilesDroppedEvent]("files-dropped")
+-	application.RegisterEvent[StartUploadEvent]("startUpload")
+-}
+ 
+ // ProgressCallback is a function type for upload progress updates
+ type ProgressCallback func(event string, data any)
+diff --git a/backend/upload_gui.go b/backend/upload_gui.go
+new file mode 100644
+index 0000000..6a842ad
+--- /dev/null
++++ b/backend/upload_gui.go
+@@ -0,0 +1,16 @@
++//go:build !cli
++
++package backend
++
++import "github.com/wailsapp/wails/v3/pkg/application"
++
++func init() {
++	application.RegisterEvent[UploadBatchStart]("uploadStart")
++	application.RegisterEvent[application.Void]("uploadStop")
++	application.RegisterEvent[FileUploadResult]("FileStatus")
++	application.RegisterEvent[ThreadStatus]("ThreadStatus")
++	application.RegisterEvent[application.Void]("uploadCancel")
++	application.RegisterEvent[int64]("uploadTotalBytes")
++	application.RegisterEvent[FilesDroppedEvent]("files-dropped")
++	application.RegisterEvent[StartUploadEvent]("startUpload")
++}
+-- 
+2.53.0
+
