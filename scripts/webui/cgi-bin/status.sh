@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
+# CGI endpoint: GET /cgi-bin/status.sh
+# Returns a JSON document describing scheduler state, live upload progress,
+# per-thread status, recent file results, and cron configuration.
+# Consumed exclusively by index.html's polling loop.
 
 set -euo pipefail
 
 CRON_CONFIG_FILE="${HOME}/crontabs"
 BACKUP_STATUS_FILE="${BACKUP_STATUS_FILE:-/tmp/backup-status.env}"
+PROGRESS_FILE="${GOTOHP_PROGRESS_FILE:-/tmp/gotohp-progress.json}"
 CONFIG_FILE="/.env"
 MANUAL_BACKUP_PID_FILE="${MANUAL_BACKUP_PID_FILE:-/tmp/webui-manual-backup.pid}"
 MANUAL_BACKUP_LOG_FILE="${MANUAL_BACKUP_LOG_FILE:-/tmp/webui-manual-backup.log}"
 
-function json_escape() {
+printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n'
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+function je() {
     local s="$1"
     s="${s//\\/\\\\}"
     s="${s//\"/\\\"}"
@@ -19,121 +27,91 @@ function json_escape() {
 
 function read_status_var() {
     local key="$1"
-    local value=""
     if [[ -f "${BACKUP_STATUS_FILE}" ]]; then
-        value="$(grep -E "^${key}=" "${BACKUP_STATUS_FILE}" | tail -n1 | cut -d'=' -f2- || true)"
+        grep -E "^${key}=" "${BACKUP_STATUS_FILE}" | tail -n1 | cut -d'=' -f2- || true
     fi
-    printf '%s' "${value}"
 }
 
+# ── scheduler state (written by backup.sh) ────────────────────────────────────
 backup_state="$(read_status_var STATE)"
 backup_last_start="$(read_status_var LAST_START)"
 backup_last_end="$(read_status_var LAST_END)"
 backup_exit_code="$(read_status_var EXIT_CODE)"
 backup_pair_indices="$(read_status_var PAIR_INDICES)"
 
-[[ -n "${backup_state}" ]] || backup_state="UNKNOWN"
+[[ -n "${backup_state}" ]]        || backup_state="UNKNOWN"
 [[ -n "${backup_pair_indices}" ]] || backup_pair_indices="ALL"
 
+# ── cron entries ──────────────────────────────────────────────────────────────
 cron_entries_json="[]"
 if [[ -f "${CRON_CONFIG_FILE}" ]]; then
     cron_entries_json="["
     first=1
     while IFS= read -r line || [[ -n "${line}" ]]; do
         [[ -z "${line}" ]] && continue
-        if [[ ${first} -eq 0 ]]; then
-            cron_entries_json+="," 
-        fi
-        cron_entries_json+="\"$(json_escape "${line}")\""
+        [[ ${first} -eq 0 ]] && cron_entries_json+=","
+        cron_entries_json+="\"$(je "${line}")\""
         first=0
     done < "${CRON_CONFIG_FILE}"
     cron_entries_json+="]"
 fi
 
+# ── manual backup process tracking ───────────────────────────────────────────
 manual_running="false"
 manual_pid=""
+manual_started_at=""
 if [[ -f "${MANUAL_BACKUP_PID_FILE}" ]]; then
     manual_pid="$(cat "${MANUAL_BACKUP_PID_FILE}" 2>/dev/null || true)"
     if [[ -n "${manual_pid}" ]] && kill -0 "${manual_pid}" 2>/dev/null; then
         manual_running="true"
+        pid_mtime="$(stat -c %Y "${MANUAL_BACKUP_PID_FILE}" 2>/dev/null || true)"
+        [[ -n "${pid_mtime}" ]] && manual_started_at="$(date -d "@${pid_mtime}" -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
     else
         rm -f "${MANUAL_BACKUP_PID_FILE}"
         manual_pid=""
     fi
 fi
 
+# ── log tail (last 80 lines, ANSI stripped) ───────────────────────────────────
 manual_log_tail=""
-manual_started="0"
-manual_completed="0"
-manual_failed="0"
-manual_progress_percent="0"
-manual_last_upload_target=""
-manual_started_at_epoch=""
-manual_runtime_seconds=""
 if [[ -f "${MANUAL_BACKUP_LOG_FILE}" ]]; then
-    manual_log_sanitized="$(sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "${MANUAL_BACKUP_LOG_FILE}" || true)"
-    manual_log_tail="$(printf '%s' "${manual_log_sanitized}" | tail -n 80 || true)"
-
-    manual_started="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Uploading ' || true)"
-    manual_completed="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Upload complete:' || true)"
-    manual_failed="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Upload failed for:' || true)"
-    manual_last_upload_target="$(printf '%s' "${manual_log_sanitized}" | grep 'Uploading ' | tail -n1 | cut -d'[' -f2- | cut -d']' -f1 || true)"
+    manual_log_tail="$(sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "${MANUAL_BACKUP_LOG_FILE}" | tail -n 80 || true)"
 fi
 
-if [[ -f "${MANUAL_BACKUP_PID_FILE}" ]]; then
-    manual_started_at_epoch="$(stat -c %Y "${MANUAL_BACKUP_PID_FILE}" 2>/dev/null || true)"
-    if [[ -n "${manual_started_at_epoch}" ]] && [[ "${manual_started_at_epoch}" =~ ^[0-9]+$ ]]; then
-        now_epoch="$(date +%s)"
-        manual_runtime_seconds="$(( now_epoch - manual_started_at_epoch ))"
-    fi
+# ── progress JSON (written by gotohp's progress_writer.go) ───────────────────
+# Pass through the entire progress blob directly; if missing, emit a sentinel.
+progress_json='{"state":"idle","total_files":0,"total_bytes":0,"completed":0,"failed":0,"bytes_uploaded":0,"speed_bytes_per_sec":0,"eta_seconds":0,"threads":[],"recent_results":[]}'
+if [[ -f "${PROGRESS_FILE}" ]]; then
+    read_progress="$(cat "${PROGRESS_FILE}" 2>/dev/null || true)"
+    [[ -n "${read_progress}" ]] && progress_json="${read_progress}"
 fi
 
-if [[ "${manual_started}" =~ ^[0-9]+$ ]] && [[ "${manual_started}" -gt 0 ]]; then
-    if [[ "${manual_completed}" =~ ^[0-9]+$ ]] && [[ "${manual_failed}" =~ ^[0-9]+$ ]]; then
-        processed="$(( manual_completed + manual_failed ))"
-        manual_progress_percent="$(( (processed * 100) / manual_started ))"
-        if [[ "${manual_running}" == "true" ]] && [[ "${manual_progress_percent}" -ge 100 ]]; then
-            manual_progress_percent="99"
-        fi
-        if [[ "${manual_running}" != "true" ]]; then
-            manual_progress_percent="100"
-        fi
-    fi
-fi
+# ── assemble output ───────────────────────────────────────────────────────────
+timestamp_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+config_file_exists="false"
+[[ -f "${CONFIG_FILE}" ]] && config_file_exists="true"
 
-echo "Content-Type: application/json"
-echo "Cache-Control: no-store"
-echo
-
-cat <<EOF
+cat <<JSON
 {
-  "timestamp_utc": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+  "timestamp_utc": "$(je "${timestamp_utc}")",
   "backup": {
-    "state": "$(json_escape "${backup_state}")",
-    "last_start": "$(json_escape "${backup_last_start}")",
-    "last_end": "$(json_escape "${backup_last_end}")",
-    "exit_code": "$(json_escape "${backup_exit_code}")",
-    "pair_indices": "$(json_escape "${backup_pair_indices}")",
-    "status_file": "$(json_escape "${BACKUP_STATUS_FILE}")"
+    "state":        "$(je "${backup_state}")",
+    "last_start":   "$(je "${backup_last_start}")",
+    "last_end":     "$(je "${backup_last_end}")",
+    "exit_code":    "$(je "${backup_exit_code}")",
+    "pair_indices": "$(je "${backup_pair_indices}")"
   },
   "runtime": {
-    "hostname": "$(json_escape "$(hostname)")",
-    "config_file_exists": $( [[ -f "${CONFIG_FILE}" ]] && echo true || echo false ),
+    "hostname":              "$(je "$(hostname)")",
+    "config_file_exists":    ${config_file_exists},
     "manual_backup_running": ${manual_running},
-    "manual_backup_pid": "$(json_escape "${manual_pid}")"
+    "manual_backup_pid":     "$(je "${manual_pid}")",
+    "manual_started_at":     "$(je "${manual_started_at}")"
   },
-    "manual_progress": {
-        "started": ${manual_started},
-        "completed": ${manual_completed},
-        "failed": ${manual_failed},
-        "percent": ${manual_progress_percent},
-        "runtime_seconds": "$(json_escape "${manual_runtime_seconds}")",
-        "last_upload_target": "$(json_escape "${manual_last_upload_target}")"
-    },
+  "progress": ${progress_json},
   "cron": {
-    "config_file": "$(json_escape "${CRON_CONFIG_FILE}")",
     "entries": ${cron_entries_json}
   },
-  "manual_backup_log_tail": "$(json_escape "${manual_log_tail}")"
+  "manual_backup_log_tail": "$(je "${manual_log_tail}")"
 }
-EOF
+JSON

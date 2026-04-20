@@ -18,6 +18,7 @@
 #   0002 – backend/album.go:       split Wails init() into album_gui.go
 #   0003 – backend/upload.go:      split Wails init() into upload_gui.go
 #   0004 – cli.go:                 supply os.Pipe() to Bubble Tea for epoll safety
+#   0005 – progress_writer.go:     write real-time progress JSON for web UI
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0

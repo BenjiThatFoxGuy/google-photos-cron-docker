@@ -3,386 +3,619 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>google-photos-cron-docker Control Panel</title>
+  <title>google-photos-cron-docker</title>
   <style>
     :root {
-      --bg: #0d1117;
-      --panel: #161b22;
-      --panel-border: #2f3944;
-      --text: #e6edf3;
-      --muted: #9da7b3;
-      --accent: #3ba9ff;
-      --success: #1f9d55;
-      --warn: #d97706;
-      --danger: #dc2626;
-      --mono-bg: #0f141a;
+      --bg:           #0d1117;
+      --panel:        #161b22;
+      --border:       #2f3944;
+      --text:         #e6edf3;
+      --muted:        #8b949e;
+      --accent:       #3b82f6;
+      --accent-dim:   #1d4ed8;
+      --success:      #22c55e;
+      --warn:         #f59e0b;
+      --danger:       #ef4444;
+      --mono-bg:      #0f141a;
+      --pill-r:       999px;
     }
-
-    * { box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
     body {
-      margin: 0;
+      margin: 0; padding: 0;
+      background: var(--bg);
       color: var(--text);
-      background:
-        radial-gradient(1200px 500px at 100% -20%, #123251 0%, transparent 60%),
-        radial-gradient(900px 420px at -10% 0%, #1e2330 0%, transparent 55%),
-        var(--bg);
-      font-family: "Segoe UI", "Noto Sans", "Liberation Sans", sans-serif;
-      line-height: 1.4;
+      font-family: "Segoe UI", "Noto Sans", system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
     }
 
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 1rem;
-    }
+    /* ── layout ── */
+    .shell { display: flex; min-height: 100vh; }
 
-    .hero {
-      background: linear-gradient(135deg, #0d2237, #17202b 60%, #1f2937);
-      border: 1px solid var(--panel-border);
-      border-radius: 14px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 1.45rem;
-      letter-spacing: 0.2px;
-    }
-
-    .sub {
-      margin-top: 0.35rem;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.7rem;
-      margin-top: 0.8rem;
-    }
-
-    .btn {
-      border: 1px solid var(--panel-border);
-      background: #1c2530;
-      color: var(--text);
-      border-radius: 9px;
-      padding: 0.55rem 0.85rem;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .btn:hover { border-color: #4b5d70; }
-    .btn.primary { background: #113a5b; border-color: #21689f; }
-    .btn.warn { background: #4b2f08; border-color: #a16207; }
-    .btn.danger { background: #4a1c1c; border-color: #9f2f2f; }
-
-    .status-pill {
-      display: inline-block;
-      padding: 0.25rem 0.55rem;
-      border-radius: 999px;
-      border: 1px solid var(--panel-border);
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.2px;
-    }
-
-    .status-success { background: #163a2a; color: #86efac; border-color: #1f9d55; }
-    .status-failed { background: #3a1717; color: #fca5a5; border-color: #dc2626; }
-    .status-running { background: #3a2f14; color: #fcd34d; border-color: #b45309; }
-    .status-unknown { background: #1d2430; color: #cbd5e1; }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-      gap: 0.7rem;
-      margin: 1rem 0;
-    }
-
-    .card {
+    nav {
+      width: 200px; flex-shrink: 0;
       background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 0.85rem;
-      min-height: 92px;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 1rem 0;
+      position: sticky; top: 0; height: 100vh;
+      overflow-y: auto;
     }
+    .nav-logo {
+      padding: 0 1rem 1rem;
+      font-weight: 700; font-size: 0.95rem; letter-spacing: 0.3px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.5rem;
+    }
+    .nav-logo span { color: var(--muted); font-weight: 400; font-size: 0.8rem; display: block; }
+    nav a {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      color: var(--muted); text-decoration: none; font-size: 0.88rem;
+      border-left: 3px solid transparent;
+      cursor: pointer;
+    }
+    nav a.active, nav a:hover { color: var(--text); border-left-color: var(--accent); background: rgba(59,130,246,.07); }
+    .nav-section { padding: 0.6rem 1rem 0.25rem; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
-    .card .label {
-      color: var(--muted);
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.35px;
-    }
+    main { flex: 1; padding: 1.25rem; overflow-x: hidden; }
 
-    .card .value {
-      margin-top: 0.38rem;
-      font-size: 1rem;
-      font-weight: 650;
-      word-break: break-word;
-    }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── common pieces ── */
+    h2 { margin: 0 0 1rem; font-size: 1rem; font-weight: 700; }
+    h3 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
 
     .panel {
       background: var(--panel);
-      border: 1px solid var(--panel-border);
-      border-radius: 12px;
-      padding: 0.85rem;
-      margin-bottom: 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 0.85rem;
     }
 
-    .panel h2 {
-      margin: 0 0 0.65rem 0;
-      font-size: 1.02rem;
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.85rem; }
+    .stat-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
     }
+    .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .stat-card .value { font-size: 1.15rem; font-weight: 700; margin-top: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+    .pill {
+      display: inline-flex; align-items: center;
+      padding: 0.18rem 0.6rem;
+      border-radius: var(--pill-r);
+      font-size: 0.75rem; font-weight: 700; letter-spacing: 0.3px;
+      border: 1px solid var(--border);
+    }
+    .pill.idle     { background: #1d2430; color: #94a3b8; }
+    .pill.running  { background: #3a2f14; color: #fcd34d; border-color: #92400e; }
+    .pill.complete { background: #14261e; color: #86efac; border-color: #166534; }
+    .pill.failed   { background: #2a1414; color: #fca5a5; border-color: #7f1d1d; }
+    .pill.cancelled{ background: #1f1a2e; color: #c4b5fd; border-color: #4c1d95; }
+    .pill.unknown  { background: #1d2430; color: #94a3b8; }
+
+    /* ── progress bar ── */
+    .prog-wrap { margin-top: 0.75rem; }
+    .prog-track {
+      width: 100%; height: 8px;
+      background: #0f1720; border: 1px solid #1e2d3d;
+      border-radius: var(--pill-r); overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%; width: 0;
+      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+      transition: width 300ms ease;
+    }
+    .prog-fill.error { background: var(--danger); }
+    .prog-meta { margin-top: 0.35rem; font-size: 0.8rem; color: var(--muted); }
+
+    /* ── transfers table ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+    th { text-align: left; padding: 0.4rem 0.6rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3px; }
+    td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #1e2730; vertical-align: middle; max-width: 0; }
+    tr:last-child td { border-bottom: none; }
+    .fname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+    .bytes-bar { width: 90px; }
+    .bytes-track { height: 5px; background: #1e2730; border-radius: var(--pill-r); overflow: hidden; }
+    .bytes-fill  { height: 100%; background: var(--accent); transition: width 200ms linear; }
+    .status-badge {
+      display: inline-block; padding: 0.1rem 0.45rem;
+      border-radius: var(--pill-r); font-size: 0.72rem; font-weight: 700;
+      white-space: nowrap;
+    }
+    .sb-idle       { background: #1d2430; color: #64748b; }
+    .sb-hashing    { background: #1d2430; color: #94a3b8; }
+    .sb-checking   { background: #1f1a2e; color: #a78bfa; }
+    .sb-uploading  { background: #0c2244; color: #93c5fd; }
+    .sb-finalizing { background: #102230; color: #67e8f9; }
+    .sb-completed  { background: #14261e; color: #86efac; }
+    .sb-error      { background: #2a1414; color: #fca5a5; }
+    .empty-row td  { text-align: center; color: var(--muted); padding: 2rem; }
+
+    /* ── history table ── */
+    .res-ok   { color: var(--success); }
+    .res-err  { color: var(--danger); }
+    .res-key  { font-family: monospace; font-size: 0.78rem; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+
+    /* ── log mono ── */
     .mono {
-      margin: 0;
-      white-space: pre-wrap;
+      font-family: "Consolas","Liberation Mono","Menlo",monospace;
+      font-size: 0.82rem;
       background: var(--mono-bg);
-      border: 1px solid #242d37;
-      border-radius: 9px;
-      padding: 0.8rem;
-      font-family: "Consolas", "Monaco", "Liberation Mono", monospace;
-      font-size: 0.86rem;
-      max-height: 320px;
+      border: 1px solid #1e2730;
+      border-radius: 8px;
+      padding: 0.75rem;
+      white-space: pre-wrap;
+      max-height: 360px;
       overflow: auto;
+      margin: 0;
     }
 
+    /* ── config editor ── */
     textarea {
-      width: 100%;
-      min-height: 220px;
-      resize: vertical;
-      border-radius: 9px;
-      border: 1px solid #334155;
-      background: #0d131a;
-      color: var(--text);
+      width: 100%; min-height: 200px; resize: vertical;
+      background: #0d131a; color: var(--text);
+      border: 1px solid #334155; border-radius: 8px;
       padding: 0.7rem;
-      font-family: "Consolas", "Monaco", "Liberation Mono", monospace;
-      font-size: 0.87rem;
+      font-family: "Consolas","Liberation Mono","Menlo",monospace;
+      font-size: 0.84rem;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); }
+    #override-result { margin-top: 0.5rem; }
+
+    /* ── buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      border: 1px solid var(--border);
+      background: #1c2530; color: var(--text);
+      border-radius: 7px; padding: 0.42rem 0.85rem;
+      cursor: pointer; font-size: 0.85rem; font-weight: 600;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: #4b5d70; }
+    .btn.primary  { background: #0f3460; border-color: #2563eb; }
+    .btn.danger   { background: #4a1c1c; border-color: #991b1b; }
+    .btn.warn     { background: #4b2f08; border-color: #92400e; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+
+    /* ── toast ── */
+    #toast {
+      position: fixed; bottom: 1.25rem; right: 1.25rem;
+      background: #1c2530; border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.6rem 1rem;
+      font-size: 0.84rem; pointer-events: none;
+      opacity: 0; transition: opacity 200ms;
+      z-index: 100;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── album badge ── */
+    .album-badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.3rem 0.75rem; border-radius: var(--pill-r);
+      background: #1f1a2e; border: 1px solid #4c1d95;
+      font-size: 0.82rem; color: #c4b5fd;
     }
 
-    .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.7rem 0; }
-
-    .progress-wrap {
-      margin-top: 0.8rem;
-      width: min(680px, 100%);
-    }
-
-    .progress-track {
-      width: 100%;
-      height: 14px;
-      border-radius: 999px;
-      background: #0f1720;
-      border: 1px solid #2b3440;
-      overflow: hidden;
-    }
-
-    .progress-fill {
-      height: 100%;
-      width: 0%;
-      background: linear-gradient(90deg, #2c82c9, #3ba9ff);
-      transition: width 240ms ease;
-    }
-
-    .progress-meta {
-      margin-top: 0.35rem;
-      color: var(--muted);
-      font-size: 0.86rem;
-    }
-
-    @media (max-width: 720px) {
-      .wrap { padding: 0.7rem; }
-      .hero { padding: 0.8rem; }
-      .btn { width: 100%; }
-      .row { gap: 0.45rem; }
+    @media (max-width: 680px) {
+      nav { display: none; }
+      main { padding: 0.75rem; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <section class="hero">
-      <h1>Google Photos Backup Control Panel</h1>
-      <p class="sub">Operational dashboard for schedule, status, manual runs, and runtime config.</p>
-      <div class="row">
-        <button class="btn primary" id="refresh-status">Refresh</button>
-        <button class="btn warn" id="run-backup">Run Backup Now</button>
-        <button class="btn danger" id="cancel-backup">Cancel Manual Run</button>
-      </div>
-      <div class="row">
-        <span id="backup-state-pill" class="status-pill status-unknown">UNKNOWN</span>
-        <span id="manual-state-pill" class="status-pill status-unknown">MANUAL IDLE</span>
-      </div>
-      <div class="progress-wrap">
-        <div class="progress-track"><div id="manual-progress-fill" class="progress-fill"></div></div>
-        <div id="manual-progress-meta" class="progress-meta">No manual run data yet.</div>
-      </div>
-    </section>
+<div class="shell">
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar">
+    <div class="nav-logo">gp-cron<span>docker control panel</span></div>
+    <div class="nav-section">Dashboard</div>
+    <a data-page="overview" class="active">&#9632; Overview</a>
+    <a data-page="transfers">&#8657; Transfers</a>
+    <a data-page="history">&#10003; History</a>
+    <div class="nav-section">Configuration</div>
+    <a data-page="schedule">&#9719; Schedule</a>
+    <a data-page="config">&#9881; Config Editor</a>
+    <div class="nav-section">Diagnostics</div>
+    <a data-page="log">&#9654; Log</a>
+  </nav>
 
-    <section class="grid">
-      <article class="card"><div class="label">Last Start</div><div id="last-start" class="value">-</div></article>
-      <article class="card"><div class="label">Last End</div><div id="last-end" class="value">-</div></article>
-      <article class="card"><div class="label">Exit Code</div><div id="exit-code" class="value">-</div></article>
-      <article class="card"><div class="label">Pair Scope</div><div id="pair-indices" class="value">-</div></article>
-      <article class="card"><div class="label">Container</div><div id="hostname" class="value">-</div></article>
-      <article class="card"><div class="label">Config Source</div><div id="config-source" class="value">-</div></article>
-    </section>
-
-    <section class="panel">
-      <h2>Registered Cron Entries</h2>
-      <pre id="cron-entries" class="mono">Loading…</pre>
-    </section>
-
-    <section class="panel">
-      <h2>Manual Backup Log (tail)</h2>
-      <pre id="manual-log" class="mono">No log yet.</pre>
-      <div class="row">
-        <button class="btn" id="refresh-log">Refresh log</button>
+  <main>
+    <!-- ═══════════════ OVERVIEW ═══════════════ -->
+    <div id="page-overview" class="page active">
+      <div class="btn-row">
+        <h2 style="margin:0;flex:1">Overview</h2>
+        <button class="btn" id="btn-refresh">&#8635; Refresh</button>
+        <button class="btn warn" id="btn-run">&#9654; Run Now</button>
+        <button class="btn danger" id="btn-cancel">&#9632; Cancel</button>
       </div>
-    </section>
 
-    <section class="panel">
+      <div class="grid-4" id="stat-cards">
+        <div class="stat-card"><div class="label">Scheduler</div><div class="value" id="sc-state">—</div></div>
+        <div class="stat-card"><div class="label">Last run</div><div class="value" id="sc-last-start">—</div></div>
+        <div class="stat-card"><div class="label">Exit code</div><div class="value" id="sc-exit">—</div></div>
+        <div class="stat-card"><div class="label">Hostname</div><div class="value" id="sc-host">—</div></div>
+        <div class="stat-card"><div class="label">Files done</div><div class="value" id="sc-files">—</div></div>
+        <div class="stat-card"><div class="label">Bytes up</div><div class="value" id="sc-bytes">—</div></div>
+        <div class="stat-card"><div class="label">Speed</div><div class="value" id="sc-speed">—</div></div>
+        <div class="stat-card"><div class="label">ETA</div><div class="value" id="sc-eta">—</div></div>
+      </div>
+
+      <div class="panel">
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+          <span id="ov-state-pill" class="pill unknown">UNKNOWN</span>
+          <span id="ov-manual-pill" class="pill idle">MANUAL IDLE</span>
+          <span id="ov-album-badge" style="display:none" class="album-badge">&#127381; <span id="ov-album-text"></span></span>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-track"><div id="ov-prog-fill" class="prog-fill"></div></div>
+          <div id="ov-prog-meta" class="prog-meta">No active upload.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ TRANSFERS ═══════════════ -->
+    <div id="page-transfers" class="page">
+      <div class="btn-row">
+        <h2 style="margin:0;flex:1">Active Transfers</h2>
+        <span id="tr-refresh-indicator" style="color:var(--muted);font-size:0.8rem">auto-refresh 3 s</span>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden">
+        <table id="transfers-table">
+          <thead><tr>
+            <th>#</th><th>File</th><th>Status</th><th>Progress</th><th>Uploaded</th><th>Attempt</th>
+          </tr></thead>
+          <tbody id="transfers-body">
+            <tr class="empty-row"><td colspan="6">No active transfers.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ HISTORY ═══════════════ -->
+    <div id="page-history" class="page">
+      <div class="btn-row">
+        <h2 style="margin:0;flex:1">File Results</h2>
+        <span style="color:var(--muted);font-size:0.8rem">last 200 files</span>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden">
+        <table id="history-table">
+          <thead><tr>
+            <th>Result</th><th>File</th><th>Media Key</th><th>Time</th>
+          </tr></thead>
+          <tbody id="history-body">
+            <tr class="empty-row"><td colspan="4">No file results yet.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══════════════ SCHEDULE ═══════════════ -->
+    <div id="page-schedule" class="page">
+      <h2>Cron Schedule</h2>
+      <div class="panel">
+        <h3>Registered Entries</h3>
+        <pre id="cron-list" class="mono">Loading…</pre>
+      </div>
+      <div class="panel">
+        <h3>Pair Scope</h3>
+        <div id="pair-scope" style="color:var(--muted);font-size:0.85rem">—</div>
+      </div>
+    </div>
+
+    <!-- ═══════════════ CONFIG ═══════════════ -->
+    <div id="page-config" class="page">
       <h2>Runtime Config Editor</h2>
-      <p class="hint">Edits KEY=VALUE entries. If /.env exists, changes persist there; otherwise they are accepted as session-only intent.</p>
-      <div class="row">
-        <button class="btn" id="load-overrides">Load Config</button>
-        <button class="btn primary" id="save-overrides">Save Config</button>
+      <div class="panel">
+        <p style="color:var(--muted);margin:0 0 0.75rem;font-size:0.85rem">
+          KEY=VALUE pairs. If <code>/.env</code> exists, changes persist there; otherwise they are session-only.
+          Config source: <strong id="cfg-source">—</strong>
+        </p>
+        <div class="btn-row">
+          <button class="btn" id="btn-load-cfg">&#8635; Load</button>
+          <button class="btn primary" id="btn-save-cfg">&#10003; Save</button>
+        </div>
+        <textarea id="cfg-editor" spellcheck="false" placeholder="CRON=0 2 * * *
+GOTOHP_THREADS=4
+SOURCE_PATH_1=/mnt/photos"></textarea>
+        <pre id="cfg-result" class="mono" style="margin-top:0.5rem;max-height:120px"></pre>
       </div>
-      <textarea id="overrides-editor" placeholder="Example:
-CRON=*/30 * * * *
-GOTOHP_THREADS=5
-SOURCE_PATH_1=/screenshots"></textarea>
-      <pre id="override-result" class="mono"></pre>
-    </section>
-  </div>
+    </div>
 
-  <script>
-    const backupStatePill = document.getElementById('backup-state-pill');
-    const manualStatePill = document.getElementById('manual-state-pill');
-    const lastStart = document.getElementById('last-start');
-    const lastEnd = document.getElementById('last-end');
-    const exitCode = document.getElementById('exit-code');
-    const pairIndices = document.getElementById('pair-indices');
-    const hostname = document.getElementById('hostname');
-    const configSource = document.getElementById('config-source');
-    const cronEntries = document.getElementById('cron-entries');
-    const manualLog = document.getElementById('manual-log');
-    const manualProgressFill = document.getElementById('manual-progress-fill');
-    const manualProgressMeta = document.getElementById('manual-progress-meta');
-    const overridesEditor = document.getElementById('overrides-editor');
-    const overrideResult = document.getElementById('override-result');
+    <!-- ═══════════════ LOG ═══════════════ -->
+    <div id="page-log" class="page">
+      <div class="btn-row">
+        <h2 style="margin:0;flex:1">Manual Backup Log</h2>
+        <button class="btn" id="btn-refresh-log">&#8635; Refresh</button>
+      </div>
+      <div class="panel" style="padding:0.5rem">
+        <pre id="log-output" class="mono">No log yet.</pre>
+      </div>
+    </div>
+  </main>
+</div>
 
-    function statusClass(state) {
-      const v = (state || '').toUpperCase();
-      if (v === 'SUCCESS') return 'status-success';
-      if (v === 'FAILED') return 'status-failed';
-      if (v === 'RUNNING') return 'status-running';
-      return 'status-unknown';
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── navigation ───────────────────────────────────────────────────────────────
+document.querySelectorAll('nav a[data-page]').forEach(link => {
+  link.addEventListener('click', () => {
+    document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    link.classList.add('active');
+    document.getElementById('page-' + link.dataset.page).classList.add('active');
+  });
+});
+
+// ── toast ─────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── formatting helpers ────────────────────────────────────────────────────────
+function fmtBytes(n) {
+  if (!n || n < 0) return '0 B';
+  const units = ['B','KiB','MiB','GiB','TiB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return n.toFixed(i ? 1 : 0) + ' ' + units[i];
+}
+function fmtSpeed(bps) {
+  if (!bps || bps <= 0) return '—';
+  return fmtBytes(bps) + '/s';
+}
+function fmtETA(sec) {
+  if (!sec || sec <= 0) return '—';
+  if (sec < 60) return Math.round(sec) + 's';
+  if (sec < 3600) return Math.round(sec / 60) + 'm ' + (Math.round(sec) % 60) + 's';
+  return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleString(); } catch { return s; }
+}
+function safe(v, fb = '—') { return (v !== null && v !== undefined && String(v).trim()) ? v : fb; }
+
+function pillClass(state) {
+  const s = (state || '').toLowerCase();
+  if (s === 'running') return 'running';
+  if (s === 'complete' || s === 'success') return 'complete';
+  if (s === 'failed' || s === 'error') return 'failed';
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'idle') return 'idle';
+  return 'unknown';
+}
+
+function statusBadge(status) {
+  const cls = {
+    idle: 'sb-idle', hashing: 'sb-hashing', checking: 'sb-checking',
+    uploading: 'sb-uploading', finalizing: 'sb-finalizing',
+    completed: 'sb-completed', error: 'sb-error'
+  }[status] || 'sb-idle';
+  return `<span class="status-badge ${cls}">${esc(status || 'idle')}</span>`;
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── state ─────────────────────────────────────────────────────────────────────
+let lastStatus = null;
+
+// ── apply status to all pages ─────────────────────────────────────────────────
+function applyStatus(d) {
+  lastStatus = d;
+  const p   = d.progress || {};
+  const rt  = d.runtime  || {};
+  const bk  = d.backup   || {};
+
+  // ── Overview: stat cards ──────────────────────────────────────────────────
+  document.getElementById('sc-state').innerHTML =
+    `<span class="pill ${pillClass(bk.state)}">${esc(bk.state||'UNKNOWN')}</span>`;
+  document.getElementById('sc-last-start').textContent = fmtDate(bk.last_start);
+  const ec = safe(bk.exit_code, '—');
+  document.getElementById('sc-exit').innerHTML =
+    `<span style="color:${ec==='0'?'var(--success)':ec==='—'?'inherit':'var(--danger)'}">${esc(ec)}</span>`;
+  document.getElementById('sc-host').textContent = safe(rt.hostname);
+
+  const total = p.total_files || 0;
+  const done  = (p.completed || 0) + (p.failed || 0);
+  document.getElementById('sc-files').textContent =
+    total ? `${p.completed||0} / ${total}` + (p.failed ? ` (${p.failed} ✗)` : '') : '—';
+  document.getElementById('sc-bytes').textContent = p.bytes_uploaded ? fmtBytes(p.bytes_uploaded) : '—';
+  document.getElementById('sc-speed').textContent = fmtSpeed(p.speed_bytes_per_sec);
+  document.getElementById('sc-eta').textContent   = fmtETA(p.eta_seconds);
+
+  // ── Overview: pills + progress bar ────────────────────────────────────────
+  const ovPill = document.getElementById('ov-state-pill');
+  ovPill.className = `pill ${pillClass(bk.state)}`;
+  ovPill.textContent = (bk.state || 'UNKNOWN').toUpperCase();
+
+  const manPill = document.getElementById('ov-manual-pill');
+  if (rt.manual_backup_running) {
+    manPill.className = 'pill running';
+    manPill.textContent = `MANUAL RUNNING (PID ${safe(rt.manual_backup_pid, '?')})`;
+  } else {
+    manPill.className = 'pill idle';
+    manPill.textContent = 'MANUAL IDLE';
+  }
+
+  // Album badge
+  const albumBadge = document.getElementById('ov-album-badge');
+  const albumText  = document.getElementById('ov-album-text');
+  if (p.album && p.album.name) {
+    albumBadge.style.display = '';
+    const a = p.album;
+    if (a.error) {
+      albumText.textContent = `Album error: ${a.name}`;
+    } else if (a.complete) {
+      albumText.textContent = `Album complete: ${a.name} (${a.items_added} items)`;
+    } else {
+      albumText.textContent = `Album: ${a.name} (${a.items_added}/${a.total_items})`;
     }
+  } else {
+    albumBadge.style.display = 'none';
+  }
 
-    function safe(v, fallback = '-') {
-      return v && String(v).trim() ? v : fallback;
-    }
+  // Progress bar
+  let pct = 0;
+  if (total > 0) {
+    pct = (done / total) * 100;
+    if (p.state === 'running' && pct >= 100) pct = 99;
+    if (p.state === 'complete') pct = 100;
+  }
+  const fill = document.getElementById('ov-prog-fill');
+  fill.style.width = pct + '%';
+  fill.className = 'prog-fill' + (p.failed > 0 ? ' error' : '');
 
-    async function refreshStatus(showToast = false) {
-      const res = await fetch('/cgi-bin/status.sh', { cache: 'no-store' });
-      if (!res.ok) {
-        throw new Error(`Status fetch failed: HTTP ${res.status}`);
-      }
-      const data = await res.json();
+  let meta = 'No active upload.';
+  if (p.state === 'running' || (total > 0 && done < total)) {
+    meta = `${done} / ${total} files`;
+    if (p.bytes_uploaded) meta += ` · ${fmtBytes(p.bytes_uploaded)}`;
+    if (p.speed_bytes_per_sec > 0) meta += ` · ${fmtSpeed(p.speed_bytes_per_sec)}`;
+    if (p.eta_seconds > 0) meta += ` · ETA ${fmtETA(p.eta_seconds)}`;
+  } else if (p.state === 'complete') {
+    meta = `Done: ${p.completed||0} ok, ${p.failed||0} failed · ${fmtBytes(p.bytes_uploaded||0)}`;
+  } else if (p.state === 'cancelled') {
+    meta = `Cancelled after ${p.completed||0} ok, ${p.failed||0} failed`;
+  }
+  document.getElementById('ov-prog-meta').textContent = meta;
 
-      const state = safe(data.backup && data.backup.state, 'UNKNOWN').toUpperCase();
-      backupStatePill.className = `status-pill ${statusClass(state)}`;
-      backupStatePill.textContent = state;
+  // ── Transfers table ───────────────────────────────────────────────────────
+  const threads = p.threads || [];
+  const tbody = document.getElementById('transfers-body');
+  if (threads.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No active transfers.</td></tr>';
+  } else {
+    tbody.innerHTML = threads.map(t => {
+      const pct = t.bytes_total > 0 ? Math.min(100, (t.bytes_uploaded / t.bytes_total) * 100) : 0;
+      return `<tr>
+        <td>${t.worker_id}</td>
+        <td><span class="fname" title="${esc(t.file_path)}">${esc(t.file_name||t.file_path||'—')}</span></td>
+        <td>${statusBadge(t.status)}</td>
+        <td class="bytes-bar">
+          <div class="bytes-track"><div class="bytes-fill" style="width:${pct.toFixed(1)}%"></div></div>
+          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${pct.toFixed(0)}%</div>
+        </td>
+        <td style="white-space:nowrap">${t.bytes_total > 0 ? fmtBytes(t.bytes_uploaded)+' / '+fmtBytes(t.bytes_total) : fmtBytes(t.bytes_uploaded)}</td>
+        <td>${t.attempt || 0}</td>
+      </tr>`;
+    }).join('');
+  }
 
-      const isManualRunning = !!(data.runtime && data.runtime.manual_backup_running);
-      manualStatePill.className = `status-pill ${isManualRunning ? 'status-running' : 'status-unknown'}`;
-      manualStatePill.textContent = isManualRunning ? `MANUAL RUNNING (PID ${safe(data.runtime.manual_backup_pid, '?')})` : 'MANUAL IDLE';
+  // ── History table ─────────────────────────────────────────────────────────
+  const results = (p.recent_results || []).slice().reverse();
+  const hbody = document.getElementById('history-body');
+  if (results.length === 0) {
+    hbody.innerHTML = '<tr class="empty-row"><td colspan="4">No file results yet.</td></tr>';
+  } else {
+    hbody.innerHTML = results.map(r => `<tr>
+      <td>${r.success
+        ? '<span class="res-ok">&#10003; OK</span>'
+        : '<span class="res-err">&#10007; Error</span>'}</td>
+      <td><span class="fname" title="${esc(r.path)}">${esc(r.file_name||r.path||'?')}</span>${r.error ? `<br><small style="color:var(--danger)">${esc(r.error)}</small>` : ''}</td>
+      <td><span class="res-key" title="${esc(r.media_key||'')}">${esc(r.media_key||'—')}</span></td>
+      <td style="white-space:nowrap;color:var(--muted)">${fmtDate(r.timestamp)}</td>
+    </tr>`).join('');
+  }
 
-      const progress = data.manual_progress || {};
-      const percent = Number(progress.percent || 0);
-      const started = Number(progress.started || 0);
-      const completed = Number(progress.completed || 0);
-      const failed = Number(progress.failed || 0);
-      const runtimeSeconds = safe(progress.runtime_seconds, '');
-      const target = safe(progress.last_upload_target, 'n/a');
-      manualProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
-      manualProgressMeta.textContent = `Progress ${percent}% · started ${started} · completed ${completed} · failed ${failed} · runtime ${runtimeSeconds || '-'}s · current ${target}`;
+  // ── Schedule ──────────────────────────────────────────────────────────────
+  const entries = (d.cron && d.cron.entries) || [];
+  document.getElementById('cron-list').textContent = entries.length ? entries.join('\n') : 'No cron entries.';
+  document.getElementById('pair-scope').textContent = safe(bk.pair_indices, 'ALL');
 
-      lastStart.textContent = safe(data.backup && data.backup.last_start);
-      lastEnd.textContent = safe(data.backup && data.backup.last_end);
-      exitCode.textContent = safe(data.backup && data.backup.exit_code);
-      pairIndices.textContent = safe(data.backup && data.backup.pair_indices);
-      hostname.textContent = safe(data.runtime && data.runtime.hostname);
-      configSource.textContent = data.runtime && data.runtime.config_file_exists ? '/.env file' : 'Environment only';
+  // ── Config source ─────────────────────────────────────────────────────────
+  document.getElementById('cfg-source').textContent = rt.config_file_exists ? '/.env (file)' : 'environment only';
 
-      const entries = (data.cron && data.cron.entries) || [];
-      cronEntries.textContent = entries.length ? entries.join('\n') : 'No cron entries found.';
-      manualLog.textContent = safe(data.manual_backup_log_tail, 'No manual backup log yet.');
+  // ── Log ───────────────────────────────────────────────────────────────────
+  document.getElementById('log-output').textContent = safe(d.manual_backup_log_tail, 'No manual backup log yet.');
+}
 
-      if (showToast) {
-        overrideResult.textContent = `Status refreshed at ${safe(data.timestamp_utc)}`;
-      }
-    }
+// ── API calls ─────────────────────────────────────────────────────────────────
+async function refreshStatus() {
+  const res = await fetch('/cgi-bin/status.sh', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  applyStatus(await res.json());
+}
 
-    async function loadOverrides() {
-      const res = await fetch('/cgi-bin/overrides.sh', { cache: 'no-store' });
-      if (!res.ok) {
-        throw new Error(`Config load failed: HTTP ${res.status}`);
-      }
-      overridesEditor.value = await res.text();
-      overrideResult.textContent = 'Config loaded';
-    }
+async function loadConfig() {
+  const res = await fetch('/cgi-bin/overrides.sh', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  document.getElementById('cfg-editor').value = await res.text();
+  document.getElementById('cfg-result').textContent = 'Config loaded.';
+}
 
-    async function saveOverrides() {
-      const res = await fetch('/cgi-bin/overrides.sh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-        body: overridesEditor.value
-      });
-      const resultText = await res.text();
-      overrideResult.textContent = resultText;
-      await refreshStatus(true);
-    }
+async function saveConfig() {
+  document.getElementById('cfg-result').textContent = 'Saving…';
+  const res = await fetch('/cgi-bin/overrides.sh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: document.getElementById('cfg-editor').value
+  });
+  document.getElementById('cfg-result').textContent = await res.text();
+  refreshStatus().catch(() => {});
+}
 
-    async function runBackupNow() {
-      overrideResult.textContent = 'Starting manual backup...';
-      const res = await fetch('/cgi-bin/run_backup.sh', {
-        method: 'POST',
-        cache: 'no-store'
-      });
-      const body = await res.text();
-      overrideResult.textContent = body;
-      await refreshStatus(true);
-    }
+async function runNow() {
+  toast('Starting manual backup…');
+  const res = await fetch('/cgi-bin/run_backup.sh', { method: 'POST', cache: 'no-store' });
+  const body = await res.json().catch(() => ({}));
+  toast(body.message || (res.ok ? 'Started.' : 'Error starting backup.'));
+  await refreshStatus();
+}
 
-    async function cancelBackupNow() {
-      overrideResult.textContent = 'Cancelling manual backup...';
-      const res = await fetch('/cgi-bin/cancel_backup.sh', {
-        method: 'POST',
-        cache: 'no-store'
-      });
-      const body = await res.text();
-      overrideResult.textContent = body;
-      await refreshStatus(true);
-    }
+async function cancelNow() {
+  toast('Sending cancel signal…');
+  const res = await fetch('/cgi-bin/cancel_backup.sh', { method: 'POST', cache: 'no-store' });
+  const body = await res.json().catch(() => ({}));
+  toast(body.message || (res.ok ? 'Cancelled.' : 'Error cancelling.'));
+  await refreshStatus();
+}
 
-    document.getElementById('refresh-status').addEventListener('click', refreshStatus);
-    document.getElementById('refresh-log').addEventListener('click', refreshStatus);
-    document.getElementById('run-backup').addEventListener('click', runBackupNow);
-    document.getElementById('cancel-backup').addEventListener('click', cancelBackupNow);
-    document.getElementById('load-overrides').addEventListener('click', loadOverrides);
-    document.getElementById('save-overrides').addEventListener('click', saveOverrides);
+// ── wire buttons ──────────────────────────────────────────────────────────────
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  refreshStatus().then(() => toast('Refreshed.')).catch(e => toast('Refresh failed: ' + e));
+});
+document.getElementById('btn-run').addEventListener('click', runNow);
+document.getElementById('btn-cancel').addEventListener('click', cancelNow);
+document.getElementById('btn-refresh-log').addEventListener('click', () => {
+  refreshStatus().catch(() => {});
+});
+document.getElementById('btn-load-cfg').addEventListener('click', () => {
+  loadConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
+});
+document.getElementById('btn-save-cfg').addEventListener('click', () => {
+  saveConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
+});
 
-    refreshStatus().catch((e) => {
-      overrideResult.textContent = `Failed to load status: ${e}`;
-    });
-    loadOverrides().catch((e) => {
-      overrideResult.textContent = `Failed to load config: ${e}`;
-    });
+// ── polling ───────────────────────────────────────────────────────────────────
+// Fast (3 s) while a transfer is running, slow (10 s) otherwise.
+let pollTimer;
+function schedulePoll() {
+  clearTimeout(pollTimer);
+  const fast = lastStatus && lastStatus.progress && lastStatus.progress.state === 'running';
+  pollTimer = setTimeout(() => {
+    refreshStatus().catch(() => {}).finally(schedulePoll);
+  }, fast ? 3000 : 10000);
+}
 
-    setInterval(() => {
-      refreshStatus().catch(() => {});
-    }, 10000);
-  </script>
+// ── boot ─────────────────────────────────────────────────────────────────────
+Promise.all([
+  refreshStatus(),
+  loadConfig()
+]).catch(() => {}).finally(schedulePoll);
+</script>
 </body>
 </html>
