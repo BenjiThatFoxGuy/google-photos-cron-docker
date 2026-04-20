@@ -56,13 +56,19 @@ case "${REQUEST_METHOD:-GET}" in
             fi
         done <<< "${body}"
 
-        umask 077
-        tmp_file="${CONFIG_FILE}.tmp.$$"
-        printf '%s' "${body}" > "${tmp_file}"
-        mv "${tmp_file}" "${CONFIG_FILE}"
-
-        http_ok_text
-        echo "Overrides saved to ${CONFIG_FILE}"
+        # Only persist overrides to file if the config file already exists
+        # (i.e., config originally came from a file, not just environment variables)
+        if [[ -f "${CONFIG_FILE}" ]]; then
+            umask 077
+            tmp_file="${CONFIG_FILE}.tmp.$$"
+            printf '%s' "${body}" > "${tmp_file}"
+            mv "${tmp_file}" "${CONFIG_FILE}"
+            http_ok_text
+            echo "Overrides saved to ${CONFIG_FILE}"
+        else
+            http_ok_text
+            echo "Overrides applied for this session only (no config file to persist to)"
+        fi
         ;;
     *)
         http_bad_request "Unsupported method: ${REQUEST_METHOD:-UNKNOWN}"

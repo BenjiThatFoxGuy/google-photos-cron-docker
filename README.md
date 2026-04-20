@@ -75,7 +75,7 @@ The web UI is automatically enabled if either `WEBUI_BIND` or `WEBUI_PORT` is sp
 - Registered cron entries
 - A plain-text editor for runtime overrides (`VAR=VALUE` lines)
 
-Runtime overrides are saved directly to `/.env` and applied on the next backup invocation.
+Runtime overrides are applied to the current session and applied on the next backup invocation. If a `/.env` config file exists, overrides are persisted there. If configuration comes only from environment variables (no `/.env` file), overrides remain session-only.
 
 > **Security note:** The prototype web UI does **not** include authentication.
 > Keep it on trusted networks only. Prefer binding to localhost (e.g.
