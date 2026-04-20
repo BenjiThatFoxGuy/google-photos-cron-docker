@@ -545,13 +545,13 @@ function applyStatus(d) {
 
 // ── API calls ─────────────────────────────────────────────────────────────────
 async function refreshStatus() {
-  const res = await fetch('/cgi-bin/status.sh', { cache: 'no-store' });
+  const res = await fetch('/api/status', { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   applyStatus(await res.json());
 }
 
 async function loadConfig() {
-  const res = await fetch('/cgi-bin/overrides.sh', { cache: 'no-store' });
+  const res = await fetch('/api/config', { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   document.getElementById('cfg-editor').value = await res.text();
   document.getElementById('cfg-result').textContent = 'Config loaded.';
@@ -559,7 +559,7 @@ async function loadConfig() {
 
 async function saveConfig() {
   document.getElementById('cfg-result').textContent = 'Saving…';
-  const res = await fetch('/cgi-bin/overrides.sh', {
+  const res = await fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     body: document.getElementById('cfg-editor').value
@@ -570,7 +570,7 @@ async function saveConfig() {
 
 async function runNow() {
   toast('Starting manual backup…');
-  const res = await fetch('/cgi-bin/run_backup.sh', { method: 'POST', cache: 'no-store' });
+  const res = await fetch('/api/run', { method: 'POST', cache: 'no-store' });
   const body = await res.json().catch(() => ({}));
   toast(body.message || (res.ok ? 'Started.' : 'Error starting backup.'));
   await refreshStatus();
@@ -578,7 +578,7 @@ async function runNow() {
 
 async function cancelNow() {
   toast('Sending cancel signal…');
-  const res = await fetch('/cgi-bin/cancel_backup.sh', { method: 'POST', cache: 'no-store' });
+  const res = await fetch('/api/cancel', { method: 'POST', cache: 'no-store' });
   const body = await res.json().catch(() => ({}));
   toast(body.message || (res.ok ? 'Cancelled.' : 'Error cancelling.'));
   await refreshStatus();

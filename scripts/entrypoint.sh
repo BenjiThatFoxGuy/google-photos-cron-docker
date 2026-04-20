@@ -30,7 +30,8 @@ function configure_cron() {
 ########################################
 # Start an optional, lightweight web UI for status and runtime overrides.
 # Auto-enables if WEBUI_BIND/WEBUI_PORT are configured via env or /.env.
-# Requires an httpd binary (from busybox-extras or busybox applet) and assets under /app/webui.
+# The web UI is served by the gotohp binary ("gotohp serve" subcommand)
+# which embeds index.html at compile time and exposes /api/* endpoints.
 ########################################
 function start_webui() {
     # Resolve from environment and /.env first.
@@ -46,19 +47,9 @@ function start_webui() {
     WEBUI_BIND="${WEBUI_BIND:-0.0.0.0}"
     WEBUI_PORT="${WEBUI_PORT:-5572}"
 
-    local -a HTTPD_CMD
-    if command -v httpd >/dev/null 2>&1; then
-        HTTPD_CMD=(httpd)
-    elif busybox --list 2>/dev/null | grep -qx 'httpd'; then
-        HTTPD_CMD=(busybox httpd)
-    else
-        color red "Web UI failed to start: no httpd implementation found"
-        return
-    fi
-
-    color blue "Starting experimental web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"
+    color blue "Starting web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"
     color yellow "Warning: web UI has no built-in authentication. Restrict access with WEBUI_BIND, firewall rules, or a reverse proxy."
-    "${HTTPD_CMD[@]}" -f -p "${WEBUI_BIND}:${WEBUI_PORT}" -h /app/webui &
+    gotohp serve --bind "${WEBUI_BIND}" --port "${WEBUI_PORT}" &
     WEBUI_PID=$!
     sleep 1
     if ! kill -0 "${WEBUI_PID}" 2>/dev/null; then
