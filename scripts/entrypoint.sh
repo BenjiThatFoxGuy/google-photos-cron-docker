@@ -29,12 +29,17 @@ function configure_cron() {
 
 ########################################
 # Start an optional, lightweight web UI for status and runtime overrides.
-# Auto-enables if any WEBUI_* variables are set (WEBUI_BIND, WEBUI_PORT).
+# Auto-enables if WEBUI_BIND/WEBUI_PORT are configured via env or /.env.
 # Requires busybox httpd and assets under /app/webui.
 ########################################
 function start_webui() {
-    # Auto-detect if web UI should be enabled by checking if any WEBUI_* vars are set
-    if [[ -z "${WEBUI_BIND:-}" && -z "${WEBUI_PORT:-}" ]]; then
+    # Resolve from environment and /.env first.
+    get_env WEBUI_BIND
+    get_env WEBUI_PORT
+
+    # Auto-detect if web UI should be enabled based on configured values.
+    if [[ -z "${WEBUI_BIND}" && -z "${WEBUI_PORT}" ]]; then
+        color blue "Web UI disabled: set WEBUI_BIND and/or WEBUI_PORT to enable"
         return
     fi
 
@@ -44,6 +49,12 @@ function start_webui() {
     color blue "Starting experimental web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"
     color yellow "Warning: web UI has no built-in authentication. Restrict access with WEBUI_BIND, firewall rules, or a reverse proxy."
     busybox httpd -f -p "${WEBUI_BIND}:${WEBUI_PORT}" -h /app/webui &
+    WEBUI_PID=$!
+    if ! kill -0 "${WEBUI_PID}" 2>/dev/null; then
+        color red "Web UI failed to start (bind ${WEBUI_BIND}:${WEBUI_PORT})"
+    else
+        color blue "Web UI started with PID ${WEBUI_PID}"
+    fi
 }
 
 ########################################
