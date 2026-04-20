@@ -78,7 +78,6 @@ index 0000000..45c1958
 --- /dev/null
 +++ b/webui_server.go
 @@ -0,0 +1,389 @@
-+package gotohp
 +//go:build cli
 +
 +package main
