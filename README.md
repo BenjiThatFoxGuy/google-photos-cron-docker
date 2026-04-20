@@ -72,6 +72,7 @@ docker compose run --rm photos-backup backup
 | `WEBUI_OVERRIDE_FILE` | `/config/webui-overrides.env` | File where web UI overrides are stored |
 
 When enabled, the UI serves:
+
 - Current backup status (`/tmp/backup-status.env`)
 - Registered cron entries
 - A plain-text editor for runtime overrides (`VAR=VALUE` lines)
@@ -102,6 +103,7 @@ CRON_1: "*/30 * * * *"     # pair 1 (screenshots) on its own faster schedule
 ```
 
 This produces two cron groups:
+
 - `0 2 * * *` — pair 0 (and any other pairs without a `CRON_N`)
 - `*/30 * * * *` — pair 1
 
@@ -141,15 +143,15 @@ the indexed form.  Both styles may be combined.
 
 ### Upload options
 
-| Variable                   | Default | Description |
-|----------------------------|---------|-------------|
-| `GOTOHP_THREADS`           | `3`     | Concurrent upload threads |
-| `GOTOHP_RECURSIVE`         | `TRUE`  | Include sub-directories |
-| `GOTOHP_FORCE`             | `FALSE` | Re-upload even if file already exists in Google Photos |
-| `GOTOHP_DELETE`            | `FALSE` | Delete source file after successful upload |
-| `GOTOHP_DISABLE_FILTER`    | `FALSE` | Upload all file types, not just media |
-| `GOTOHP_DATE_FROM_FILENAME`| `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
-| `GOTOHP_LOG_LEVEL`         | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
+| Variable                    | Default | Description |
+|-----------------------------|---------|-------------|
+| `GOTOHP_THREADS`            | `3`     | Concurrent upload threads |
+| `GOTOHP_RECURSIVE`          | `TRUE`  | Include sub-directories |
+| `GOTOHP_FORCE`              | `FALSE` | Re-upload even if file already exists in Google Photos |
+| `GOTOHP_DELETE`             | `FALSE` | Delete source file after successful upload |
+| `GOTOHP_DISABLE_FILTER`     | `FALSE` | Upload all file types, not just media |
+| `GOTOHP_DATE_FROM_FILENAME` | `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
+| `GOTOHP_LOG_LEVEL`          | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
 
 ### Per-pair upload option overrides
 
