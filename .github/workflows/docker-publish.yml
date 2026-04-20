@@ -5,8 +5,11 @@ on:
   schedule:
     - cron: "0 0 * * *"    # 00:00 UTC every day
 
-  # Tagged release (e.g. v1.0.0)
+  # Tagged release (e.g. v1.0.0) and nightly builds on non-default branch pushes
   push:
+    branches:
+      - '**'
+      - '!main'
     tags:
       - "v*"
 
@@ -78,8 +81,8 @@ jobs:
             type=semver,pattern={{major}}
             # "latest" on any tag push
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            # "nightly" on schedule, manual dispatch, or PR push
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' }}
+            # "nightly" on schedule, manual dispatch, PR push, or non-default branch push
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
