@@ -32,7 +32,9 @@ WORKDIR /gotohp
 # Apply all patches in order.  git am aborts with clear diff context on failure,
 # making it immediately obvious which upstream change broke a patch.
 COPY patches/ /patches/
-RUN git am /patches/*.patch
+RUN git config user.email "build@dockerfile" \
+    && git config user.name "Dockerfile" \
+    && git am /patches/*.patch
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \
