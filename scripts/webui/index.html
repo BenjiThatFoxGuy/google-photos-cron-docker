@@ -505,6 +505,19 @@ function fmtDate(s) {
 }
 function safe(v, fb = '—') { return (v !== null && v !== undefined && String(v).trim()) ? v : fb; }
 
+// Remove ANSI escape/control artifacts from logs before rendering.
+function cleanLogText(s) {
+  return String(s || '')
+    // Standard ANSI CSI escapes: ESC[ ... letter
+    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    // Some clients encode ESC as C1 CSI (0x9B)
+    .replace(/\u009b[0-9;?]*[ -/]*[@-~]/g, '')
+    // Fallback for mangled replacement-char artifacts like "�[32m"
+    .replace(/\uFFFD\[[0-9;?]*[ -/]*[@-~]/g, '')
+    // Remove remaining low ASCII controls except newline/tab
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
 function pillClass(state) {
   const s = (state || '').toLowerCase();
   if (s === 'running') return 'running';
@@ -822,7 +835,7 @@ function applyStatus(d) {
   document.getElementById('cfg-source').textContent = rt.config_file_exists ? '/.env (file)' : 'environment only';
 
   // ── Log ───────────────────────────────────────────────────────────────────
-  document.getElementById('log-output').textContent = safe(d.manual_backup_log_tail, 'No manual backup log yet.');
+  document.getElementById('log-output').textContent = cleanLogText(safe(d.manual_backup_log_tail, 'No manual backup log yet.'));
 }
 
 // ── API calls ─────────────────────────────────────────────────────────────────
