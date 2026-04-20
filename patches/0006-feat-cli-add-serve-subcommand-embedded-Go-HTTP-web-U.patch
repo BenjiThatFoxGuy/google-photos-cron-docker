@@ -32,7 +32,7 @@ so it can be updated without regenerating Go patches.
 ---
  cli_shared.go   |  19 +++
  webui_server.go | 389 ++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 408 insertions(+)
+ 2 files changed, 407 insertions(+)
  create mode 100644 webui_server.go
 
 diff --git a/cli_shared.go b/cli_shared.go
@@ -77,7 +77,7 @@ new file mode 100644
 index 0000000..45c1958
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,389 @@
+@@ -0,0 +1,388 @@
 +//go:build cli
 +
 +package main
