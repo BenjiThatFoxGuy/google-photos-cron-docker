@@ -23,30 +23,67 @@ function color() {
 }
 
 ########################################
-# Export variables from /.env file.
+# Export key=value variables from file using a prefix.
+# Arguments:
+#     file_path
+#     var_prefix
+########################################
+function export_prefixed_env_file() {
+    local file_path="$1"
+    local var_prefix="$2"
+    local line var_name value
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Trim leading whitespace
+        line="${line#"${line%%[![:space:]]*}"}"
+        # Trim trailing whitespace
+        line="${line%"${line##*[![:space:]]}"}"
+        # Skip empty lines and comments
+        [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+        # Match VAR=VALUE where VAR is a valid shell variable name
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            var_name=${BASH_REMATCH[1]}
+            value=${BASH_REMATCH[2]}
+            # Export as-is (no shell evaluation), prefixed namespace
+            export "${var_prefix}${var_name}=${value}"
+        fi
+    done < "${file_path}"
+}
+
+########################################
+# Export variables from /.env and optional web UI overrides file.
 # Arguments:
 #     None
 ########################################
 function export_env_file() {
     if [[ -f "/.env" ]]; then
         color blue "Found /.env file, exporting variables"
-        local line var_name value
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            # Trim leading whitespace
-            line="${line#"${line%%[![:space:]]*}"}"
-            # Trim trailing whitespace
-            line="${line%"${line##*[![:space:]]}"}"
-            # Skip empty lines and comments
-            [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
-            # Match VAR=VALUE where VAR is a valid shell variable name
-            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                var_name=${BASH_REMATCH[1]}
-                value=${BASH_REMATCH[2]}
-                # Export as-is (no shell evaluation), prefixed with DOTENV_
-                export "DOTENV_${var_name}=${value}"
-            fi
-        done < "/.env"
+        export_prefixed_env_file "/.env" "DOTENV_"
     fi
+
+    WEBUI_OVERRIDE_FILE="${WEBUI_OVERRIDE_FILE:-/config/webui-overrides.env}"
+    if [[ -f "${WEBUI_OVERRIDE_FILE}" ]]; then
+        color blue "Found web UI overrides file, exporting variables"
+        export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"
+    fi
+}
+
+########################################
+# Read a secret/env file and normalize line endings.
+# Removes carriage returns and trailing newline characters.
+# Arguments:
+#     file path
+# Outputs:
+#     normalized file content (stdout)
+########################################
+function read_env_file_value() {
+    local file_path="$1"
+    local value
+    value="$(cat "${file_path}")"
+    value="${value//$'\r'/}"
+    while [[ "${value}" == *$'\n' ]]; do
+        value="${value%$'\n'}"
+    done
+    printf '%s' "${value}"
 }
 
 ########################################
@@ -63,22 +100,22 @@ function export_env_file() {
 function get_env() {
     local VAR="$1"
     local VAR_FILE="${VAR}_FILE"
+    local VAR_WEBUI_OVERRIDE="WEBUI_OVERRIDE_${VAR}"
+    local VAR_WEBUI_OVERRIDE_FILE="WEBUI_OVERRIDE_${VAR_FILE}"
     local VAR_DOTENV="DOTENV_${VAR}"
     local VAR_DOTENV_FILE="DOTENV_${VAR_FILE}"
     local VALUE=""
 
-    if [[ -n "${!VAR:-}" ]]; then
+    if [[ -n "${!VAR_WEBUI_OVERRIDE:-}" ]]; then
+        VALUE="${!VAR_WEBUI_OVERRIDE}"
+    elif [[ -n "${!VAR_WEBUI_OVERRIDE_FILE:-}" ]]; then
+        VALUE="$(read_env_file_value "${!VAR_WEBUI_OVERRIDE_FILE}")"
+    elif [[ -n "${!VAR:-}" ]]; then
         VALUE="${!VAR}"
     elif [[ -n "${!VAR_FILE:-}" ]]; then
-        VALUE="$(cat "${!VAR_FILE}")"
-        VALUE="${VALUE%$'\r\n'}"
-        VALUE="${VALUE%$'\n'}"
-        VALUE="${VALUE%$'\r'}"
+        VALUE="$(read_env_file_value "${!VAR_FILE}")"
     elif [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
-        VALUE="$(cat "${!VAR_DOTENV_FILE}")"
-        VALUE="${VALUE%$'\r\n'}"
-        VALUE="${VALUE%$'\n'}"
-        VALUE="${VALUE%$'\r'}"
+        VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
     elif [[ -n "${!VAR_DOTENV:-}" ]]; then
         VALUE="${!VAR_DOTENV}"
     fi

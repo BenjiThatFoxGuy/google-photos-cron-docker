@@ -19,6 +19,7 @@ easy to adopt if you are already familiar with that project.
 - Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
 - Credentials stored in a Docker volume — survive container restarts
 - Secrets can be supplied via files (`_FILE` suffix) or a `.env` file
+- Optional experimental web UI for status and runtime overrides
 - Tiny Alpine-based image, pure-Go binary (no webkit/GUI dependencies)
 
 ---
@@ -60,6 +61,27 @@ docker compose run --rm photos-backup backup
 | `CRON`          | `5 * * * *`    | Global cron expression (applies to all pairs without a `CRON_N` override) |
 | `TIMEZONE`      | `UTC`          | Container timezone (e.g. `America/New_York`) |
 | `CRON_OVERLAP`  | `queue`        | What to do when a schedule group fires while its previous run is still active (see [Schedule overlap modes](#schedule-overlap-modes)) |
+
+### Web UI (experimental)
+
+| Variable              | Default | Description |
+|-----------------------|---------|-------------|
+| `WEBUI_ENABLE`        | `FALSE` | Enable the lightweight prototype web UI |
+| `WEBUI_BIND`          | `0.0.0.0` | Interface/address for the web UI HTTP server |
+| `WEBUI_PORT`          | `5572`  | Port exposed by the web UI HTTP server |
+| `WEBUI_OVERRIDE_FILE` | `/config/webui-overrides.env` | File where web UI overrides are stored |
+
+When enabled, the UI serves:
+- Current backup status (`/tmp/backup-status.env`)
+- Registered cron entries
+- A plain-text editor for runtime overrides (`VAR=VALUE` lines)
+
+Runtime overrides take precedence over the container environment and are applied
+on the next backup invocation.
+
+> **Security note:** The prototype web UI does **not** include authentication.
+> Keep it on trusted networks only. Prefer binding to localhost (e.g.
+> `WEBUI_BIND=127.0.0.1`) and/or placing it behind a reverse proxy with auth.
 
 #### Per-pair schedule overrides
 

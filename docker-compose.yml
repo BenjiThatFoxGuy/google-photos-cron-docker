@@ -28,11 +28,17 @@ services:
       GOTOHP_DISABLE_FILTER: "FALSE"        # upload all file types (not just media)
       GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
+
+      # Optional experimental web UI
+      # WEBUI_ENABLE: "TRUE"
+      # WEBUI_PORT: "5572"
     volumes:
       # If GOTOHP_DELETE is TRUE, this mount must be read-write (no :ro).
       # If you are not using GOTOHP_DELETE, you can add :ro for safety.
       - /path/to/your/photos:/photos      # source directory
       - gotohp-config:/config             # persists credentials & config
+    # ports:
+    #   - "5572:5572"
 
   # ── Multiple sources → multiple albums ──────────────────────────────────────
   # Uncomment and adapt the block below to back up several directories,

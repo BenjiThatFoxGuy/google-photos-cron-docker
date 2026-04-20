@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>google-photos-cron-docker (prototype UI)</title>
+  <style>
+    body { font-family: sans-serif; margin: 1.2rem; max-width: 980px; }
+    h1, h2 { margin-bottom: 0.4rem; }
+    button { margin-right: 0.6rem; margin-bottom: 0.6rem; }
+    textarea { width: 100%; min-height: 14rem; font-family: monospace; }
+    pre { background: #111; color: #e8e8e8; padding: 0.8rem; overflow: auto; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>google-photos-cron-docker</h1>
+  <p class="muted">Prototype web UI (experimental)</p>
+
+  <h2>Status</h2>
+  <button id="refresh-status">Refresh status</button>
+  <pre id="status-output">Loading status…</pre>
+
+  <h2>Runtime overrides</h2>
+  <p class="muted">Saved to <code>/config/webui-overrides.env</code> and applied on the next backup invocation.</p>
+  <button id="load-overrides">Load overrides</button>
+  <button id="save-overrides">Save overrides</button>
+  <textarea id="overrides-editor" placeholder="Example:
+CRON=*/30 * * * *
+GOTOHP_THREADS=5
+SOURCE_PATH_1=/screenshots"></textarea>
+  <pre id="override-result"></pre>
+
+  <script>
+    const statusOutput = document.getElementById('status-output');
+    const overridesEditor = document.getElementById('overrides-editor');
+    const overrideResult = document.getElementById('override-result');
+
+    async function refreshStatus() {
+      const res = await fetch('/cgi-bin/status.sh', { cache: 'no-store' });
+      statusOutput.textContent = await res.text();
+    }
+
+    async function loadOverrides() {
+      const res = await fetch('/cgi-bin/overrides.sh', { cache: 'no-store' });
+      overridesEditor.value = await res.text();
+      overrideResult.textContent = 'Overrides loaded';
+    }
+
+    async function saveOverrides() {
+      const res = await fetch('/cgi-bin/overrides.sh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: overridesEditor.value
+      });
+      overrideResult.textContent = await res.text();
+      await refreshStatus();
+    }
+
+    document.getElementById('refresh-status').addEventListener('click', refreshStatus);
+    document.getElementById('load-overrides').addEventListener('click', loadOverrides);
+    document.getElementById('save-overrides').addEventListener('click', saveOverrides);
+
+    refreshStatus().catch((e) => { statusOutput.textContent = `Failed to load status: ${e}`; });
+    loadOverrides().catch((e) => { overrideResult.textContent = `Failed to load overrides: ${e}`; });
+  </script>
+</body>
+</html>

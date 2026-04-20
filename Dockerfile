@@ -93,8 +93,9 @@ RUN apk add --no-cache bash supercronic tzdata \
 COPY --from=builder /usr/local/bin/gotohp /usr/local/bin/gotohp
 
 COPY scripts/*.sh /app/
+COPY scripts/webui/ /app/webui/
 
-RUN chmod +x /app/*.sh
+RUN chmod +x /app/*.sh /app/webui/cgi-bin/*.sh
 
 VOLUME ["/config"]
 

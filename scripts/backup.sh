@@ -77,6 +77,38 @@ color blue "Running backup at $(date +"%Y-%m-%d %H:%M:%S %Z")"
 
 init_env
 
+BACKUP_STATUS_FILE="${BACKUP_STATUS_FILE:-/tmp/backup-status.env}"
+mkdir -p "$(dirname "${BACKUP_STATUS_FILE}")"
+STATUS_LAST_START="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+function write_backup_status() {
+    local state="$1"
+    local exit_code="$2"
+    local last_end
+    last_end="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    {
+        echo "STATE=${state}"
+        echo "LAST_START=${STATUS_LAST_START}"
+        echo "LAST_END=${last_end}"
+        echo "EXIT_CODE=${exit_code}"
+        echo "PAIR_INDICES=${PAIR_INDICES:-ALL}"
+    } > "${BACKUP_STATUS_FILE}"
+}
+
+# 255 is used as a sentinel while a run is still in progress.
+write_backup_status "RUNNING" "255"
+
+function finalize_backup_status() {
+    local rc=$?
+    if [[ ${rc} -eq 0 ]]; then
+        write_backup_status "SUCCESS" "${rc}"
+    else
+        write_backup_status "FAILED" "${rc}"
+    fi
+}
+
+trap finalize_backup_status EXIT
+
 ########################################
 # Handle per-group overlap locking when PAIR_INDICES is set.
 # Uses a lockfile keyed to PAIR_INDICES so different groups never block

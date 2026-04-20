@@ -28,6 +28,29 @@ function configure_cron() {
 }
 
 ########################################
+# Start an optional, lightweight web UI for status and runtime overrides.
+# Requires busybox httpd and assets under /app/webui.
+########################################
+function start_webui() {
+    get_env WEBUI_ENABLE
+    WEBUI_ENABLE=$(echo "${WEBUI_ENABLE:-FALSE}" | tr '[:lower:]' '[:upper:]')
+    if [[ "${WEBUI_ENABLE}" != "TRUE" ]]; then
+        return
+    fi
+
+    get_env WEBUI_BIND
+    WEBUI_BIND="${WEBUI_BIND:-0.0.0.0}"
+    get_env WEBUI_PORT
+    WEBUI_PORT="${WEBUI_PORT:-5572}"
+    WEBUI_OVERRIDE_FILE="${WEBUI_OVERRIDE_FILE:-/config/webui-overrides.env}"
+
+    mkdir -p "$(dirname "${WEBUI_OVERRIDE_FILE}")"
+    color blue "Starting experimental web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"
+    color yellow "Warning: web UI has no built-in authentication. Restrict access with WEBUI_BIND, firewall rules, or a reverse proxy."
+    busybox httpd -f -p "${WEBUI_BIND}:${WEBUI_PORT}" -h /app/webui &
+}
+
+########################################
 # Return 0 if the cron expression contains at least one interval-style
 # step field (*/N), meaning it fires "once every N" units rather than at
 # a fixed point in time (e.g. "*/10 * * * *" → true; "0 * * * *" → false).
@@ -97,6 +120,8 @@ if [[ "$1" == "backup" ]]; then
     bash /app/backup.sh
     exit $?
 fi
+
+start_webui
 
 # Interval-style crons (e.g. "*/10 * * * *") imply "once every N units", so
 # the first scheduled fire could be almost a full interval away.  Run an
