@@ -1,4 +1,4 @@
-From b0d88a5b9356b3c6606590dfcae101b1f7ba195c Mon Sep 17 00:00:00 2001
+From cce123370a93f4f4aba1fb5f882f10c5338dd669 Mon Sep 17 00:00:00 2001
 From: Build <patch@build>
 Date: Mon, 20 Apr 2026 23:35:47 +0000
 Subject: [PATCH] =?UTF-8?q?feat(cli):=20add=20"serve"=20subcommand=20?=
@@ -31,8 +31,8 @@ by the container build (COPY scripts/webui/index.html /gotohp/webui/index.html)
 so it can be updated without regenerating Go patches.
 ---
  cli_shared.go   |  19 +++
- webui_server.go | 389 ++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 407 insertions(+)
+ webui_server.go | 441 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 460 insertions(+)
  create mode 100644 webui_server.go
 
 diff --git a/cli_shared.go b/cli_shared.go
@@ -74,10 +74,10 @@ index 28537ac..6550700 100644
  		printCLIHelp()
 diff --git a/webui_server.go b/webui_server.go
 new file mode 100644
-index 0000000..45c1958
+index 0000000..e0e7b99
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,441 @@
 +//go:build cli
 +
 +package main
@@ -94,6 +94,7 @@ index 0000000..45c1958
 +	"os"
 +	"os/exec"
 +	"path/filepath"
++	"sort"
 +	"strconv"
 +	"strings"
 +	"syscall"
@@ -359,7 +360,7 @@ index 0000000..45c1958
 +	case http.MethodGet:
 +		data, err := os.ReadFile(s.configFile)
 +		if err != nil {
-+			data = []byte{}
++			data = []byte(renderConfigFromEnvironment())
 +		}
 +		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 +		w.Write(data)
@@ -465,6 +466,58 @@ index 0000000..45c1958
 +		lines = lines[len(lines)-n:]
 +	}
 +	return strings.Join(lines, "\n")
++}
++
++func renderConfigFromEnvironment() string {
++	keys := make([]string, 0, 64)
++	values := make(map[string]string, 64)
++
++	for _, entry := range os.Environ() {
++		k, v, ok := strings.Cut(entry, "=")
++		if !ok {
++			continue
++		}
++		if !isConfigKeyForEditor(k) {
++			continue
++		}
++		keys = append(keys, k)
++		values[k] = v
++	}
++
++	sort.Strings(keys)
++
++	var b strings.Builder
++	b.WriteString("# Generated from current environment (/.env not found)\n")
++	for _, k := range keys {
++		b.WriteString(k)
++		b.WriteByte('=')
++		b.WriteString(values[k])
++		b.WriteByte('\n')
++	}
++	return b.String()
++}
++
++func isConfigKeyForEditor(key string) bool {
++	switch key {
++	case "CRON", "CRON_OVERLAP", "TIMEZONE", "SOURCE_PATH", "ALBUM_NAME",
++		"GOTOHP_THREADS", "GOTOHP_RECURSIVE", "GOTOHP_FORCE", "GOTOHP_DELETE",
++		"GOTOHP_DISABLE_FILTER", "GOTOHP_DATE_FROM_FILENAME", "GOTOHP_LOG_LEVEL",
++		"GOTOHP_CREDS", "GOTOHP_EMAIL":
++		return true
++	}
++
++	for _, prefix := range []string{
++		"SOURCE_PATH_", "ALBUM_NAME_", "CRON_",
++		"GOTOHP_THREADS_", "GOTOHP_RECURSIVE_", "GOTOHP_FORCE_", "GOTOHP_DELETE_",
++		"GOTOHP_DISABLE_FILTER_", "GOTOHP_DATE_FROM_FILENAME_", "GOTOHP_LOG_LEVEL_",
++		"GOTOHP_CREDS_", "GOTOHP_EMAIL_",
++	} {
++		if strings.HasPrefix(key, prefix) {
++			return true
++		}
++	}
++
++	return false
 +}
 -- 
 2.53.0
