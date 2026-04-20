@@ -63,8 +63,42 @@ if [[ -f "${MANUAL_BACKUP_PID_FILE}" ]]; then
 fi
 
 manual_log_tail=""
+manual_started="0"
+manual_completed="0"
+manual_failed="0"
+manual_progress_percent="0"
+manual_last_upload_target=""
+manual_started_at_epoch=""
+manual_runtime_seconds=""
 if [[ -f "${MANUAL_BACKUP_LOG_FILE}" ]]; then
-    manual_log_tail="$(tail -n 80 "${MANUAL_BACKUP_LOG_FILE}" || true)"
+    manual_log_sanitized="$(sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g' "${MANUAL_BACKUP_LOG_FILE}" || true)"
+    manual_log_tail="$(printf '%s' "${manual_log_sanitized}" | tail -n 80 || true)"
+
+    manual_started="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Uploading ' || true)"
+    manual_completed="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Upload complete:' || true)"
+    manual_failed="$(printf '%s' "${manual_log_sanitized}" | grep -c 'Upload failed for:' || true)"
+    manual_last_upload_target="$(printf '%s' "${manual_log_sanitized}" | grep 'Uploading ' | tail -n1 | cut -d'[' -f2- | cut -d']' -f1 || true)"
+fi
+
+if [[ -f "${MANUAL_BACKUP_PID_FILE}" ]]; then
+    manual_started_at_epoch="$(stat -c %Y "${MANUAL_BACKUP_PID_FILE}" 2>/dev/null || true)"
+    if [[ -n "${manual_started_at_epoch}" ]] && [[ "${manual_started_at_epoch}" =~ ^[0-9]+$ ]]; then
+        now_epoch="$(date +%s)"
+        manual_runtime_seconds="$(( now_epoch - manual_started_at_epoch ))"
+    fi
+fi
+
+if [[ "${manual_started}" =~ ^[0-9]+$ ]] && [[ "${manual_started}" -gt 0 ]]; then
+    if [[ "${manual_completed}" =~ ^[0-9]+$ ]] && [[ "${manual_failed}" =~ ^[0-9]+$ ]]; then
+        processed="$(( manual_completed + manual_failed ))"
+        manual_progress_percent="$(( (processed * 100) / manual_started ))"
+        if [[ "${manual_running}" == "true" ]] && [[ "${manual_progress_percent}" -ge 100 ]]; then
+            manual_progress_percent="99"
+        fi
+        if [[ "${manual_running}" != "true" ]]; then
+            manual_progress_percent="100"
+        fi
+    fi
 fi
 
 echo "Content-Type: application/json"
@@ -88,6 +122,14 @@ cat <<EOF
     "manual_backup_running": ${manual_running},
     "manual_backup_pid": "$(json_escape "${manual_pid}")"
   },
+    "manual_progress": {
+        "started": ${manual_started},
+        "completed": ${manual_completed},
+        "failed": ${manual_failed},
+        "percent": ${manual_progress_percent},
+        "runtime_seconds": "$(json_escape "${manual_runtime_seconds}")",
+        "last_upload_target": "$(json_escape "${manual_last_upload_target}")"
+    },
   "cron": {
     "config_file": "$(json_escape "${CRON_CONFIG_FILE}")",
     "entries": ${cron_entries_json}

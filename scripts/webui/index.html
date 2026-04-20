@@ -76,6 +76,7 @@
     .btn:hover { border-color: #4b5d70; }
     .btn.primary { background: #113a5b; border-color: #21689f; }
     .btn.warn { background: #4b2f08; border-color: #a16207; }
+    .btn.danger { background: #4a1c1c; border-color: #9f2f2f; }
 
     .status-pill {
       display: inline-block;
@@ -162,6 +163,33 @@
 
     .hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 0.7rem 0; }
 
+    .progress-wrap {
+      margin-top: 0.8rem;
+      width: min(680px, 100%);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 14px;
+      border-radius: 999px;
+      background: #0f1720;
+      border: 1px solid #2b3440;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #2c82c9, #3ba9ff);
+      transition: width 240ms ease;
+    }
+
+    .progress-meta {
+      margin-top: 0.35rem;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
     @media (max-width: 720px) {
       .wrap { padding: 0.7rem; }
       .hero { padding: 0.8rem; }
@@ -178,10 +206,15 @@
       <div class="row">
         <button class="btn primary" id="refresh-status">Refresh</button>
         <button class="btn warn" id="run-backup">Run Backup Now</button>
+        <button class="btn danger" id="cancel-backup">Cancel Manual Run</button>
       </div>
       <div class="row">
         <span id="backup-state-pill" class="status-pill status-unknown">UNKNOWN</span>
         <span id="manual-state-pill" class="status-pill status-unknown">MANUAL IDLE</span>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-track"><div id="manual-progress-fill" class="progress-fill"></div></div>
+        <div id="manual-progress-meta" class="progress-meta">No manual run data yet.</div>
       </div>
     </section>
 
@@ -233,6 +266,8 @@ SOURCE_PATH_1=/screenshots"></textarea>
     const configSource = document.getElementById('config-source');
     const cronEntries = document.getElementById('cron-entries');
     const manualLog = document.getElementById('manual-log');
+    const manualProgressFill = document.getElementById('manual-progress-fill');
+    const manualProgressMeta = document.getElementById('manual-progress-meta');
     const overridesEditor = document.getElementById('overrides-editor');
     const overrideResult = document.getElementById('override-result');
 
@@ -262,6 +297,16 @@ SOURCE_PATH_1=/screenshots"></textarea>
       const isManualRunning = !!(data.runtime && data.runtime.manual_backup_running);
       manualStatePill.className = `status-pill ${isManualRunning ? 'status-running' : 'status-unknown'}`;
       manualStatePill.textContent = isManualRunning ? `MANUAL RUNNING (PID ${safe(data.runtime.manual_backup_pid, '?')})` : 'MANUAL IDLE';
+
+      const progress = data.manual_progress || {};
+      const percent = Number(progress.percent || 0);
+      const started = Number(progress.started || 0);
+      const completed = Number(progress.completed || 0);
+      const failed = Number(progress.failed || 0);
+      const runtimeSeconds = safe(progress.runtime_seconds, '');
+      const target = safe(progress.last_upload_target, 'n/a');
+      manualProgressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      manualProgressMeta.textContent = `Progress ${percent}% · started ${started} · completed ${completed} · failed ${failed} · runtime ${runtimeSeconds || '-'}s · current ${target}`;
 
       lastStart.textContent = safe(data.backup && data.backup.last_start);
       lastEnd.textContent = safe(data.backup && data.backup.last_end);
@@ -310,9 +355,21 @@ SOURCE_PATH_1=/screenshots"></textarea>
       await refreshStatus(true);
     }
 
+    async function cancelBackupNow() {
+      overrideResult.textContent = 'Cancelling manual backup...';
+      const res = await fetch('/cgi-bin/cancel_backup.sh', {
+        method: 'POST',
+        cache: 'no-store'
+      });
+      const body = await res.text();
+      overrideResult.textContent = body;
+      await refreshStatus(true);
+    }
+
     document.getElementById('refresh-status').addEventListener('click', refreshStatus);
     document.getElementById('refresh-log').addEventListener('click', refreshStatus);
     document.getElementById('run-backup').addEventListener('click', runBackupNow);
+    document.getElementById('cancel-backup').addEventListener('click', cancelBackupNow);
     document.getElementById('load-overrides').addEventListener('click', loadOverrides);
     document.getElementById('save-overrides').addEventListener('click', saveOverrides);
 
