@@ -6,25 +6,29 @@
   <title>google-photos-cron-docker</title>
   <style>
     :root {
-      --bg:           #0d1117;
-      --panel:        #161b22;
-      --border:       #2f3944;
-      --text:         #e6edf3;
-      --muted:        #8b949e;
-      --accent:       #3b82f6;
-      --accent-dim:   #1d4ed8;
-      --success:      #22c55e;
-      --warn:         #f59e0b;
-      --danger:       #ef4444;
-      --mono-bg:      #0f141a;
+      --bg:           #121318;
+      --panel:        #1d1b20;
+      --panel-hi:     #24212a;
+      --border:       #49454f;
+      --text:         #e6e0e9;
+      --muted:        #cac4d0;
+      --accent:       #d0bcff;
+      --accent-dim:   #b69df8;
+      --accent-text:  #381e72;
+      --success:      #79d99a;
+      --warn:         #f2c15d;
+      --danger:       #ffb4ab;
+      --mono-bg:      #15121a;
       --pill-r:       999px;
+      --radius:       16px;
+      --shadow:       0 1px 1px rgba(0,0,0,.25), 0 2px 8px rgba(0,0,0,.25);
     }
     *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0; padding: 0;
-      background: var(--bg);
+      background: radial-gradient(circle at 10% 0, #1a1f2b, var(--bg) 45%);
       color: var(--text);
-      font-family: "Segoe UI", "Noto Sans", system-ui, sans-serif;
+      font-family: "Roboto Flex", "Noto Sans", system-ui, sans-serif;
       font-size: 14px;
       line-height: 1.5;
     }
@@ -34,8 +38,8 @@
 
     nav {
       width: 200px; flex-shrink: 0;
-      background: var(--panel);
-      border-right: 1px solid var(--border);
+      background: color-mix(in srgb, var(--panel) 92%, #000);
+      border-right: 1px solid color-mix(in srgb, var(--border) 80%, #000);
       display: flex; flex-direction: column;
       padding: 1rem 0;
       position: sticky; top: 0; height: 100vh;
@@ -55,7 +59,11 @@
       border-left: 3px solid transparent;
       cursor: pointer;
     }
-    nav a.active, nav a:hover { color: var(--text); border-left-color: var(--accent); background: rgba(59,130,246,.07); }
+    nav a.active, nav a:hover {
+      color: var(--text);
+      border-left-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 20%, transparent);
+    }
     .nav-section { padding: 0.6rem 1rem 0.25rem; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 
     main { flex: 1; padding: 1.25rem; overflow-x: hidden; }
@@ -68,19 +76,21 @@
     h3 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
 
     .panel {
-      background: var(--panel);
+      background: linear-gradient(180deg, var(--panel-hi), var(--panel));
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius);
       padding: 1rem;
       margin-bottom: 0.85rem;
+      box-shadow: var(--shadow);
     }
 
     .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.85rem; }
     .stat-card {
-      background: var(--panel);
+      background: linear-gradient(180deg, var(--panel-hi), var(--panel));
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: var(--radius);
       padding: 0.85rem 1rem;
+      box-shadow: var(--shadow);
     }
     .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
     .stat-card .value { font-size: 1.15rem; font-weight: 700; margin-top: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -103,7 +113,7 @@
     .prog-wrap { margin-top: 0.75rem; }
     .prog-track {
       width: 100%; height: 8px;
-      background: #0f1720; border: 1px solid #1e2d3d;
+      background: #15131b; border: 1px solid #3a3343;
       border-radius: var(--pill-r); overflow: hidden;
     }
     .prog-fill {
@@ -159,8 +169,8 @@
     /* ── config editor ── */
     textarea {
       width: 100%; min-height: 200px; resize: vertical;
-      background: #0d131a; color: var(--text);
-      border: 1px solid #334155; border-radius: 8px;
+      background: #141218; color: var(--text);
+      border: 1px solid #5a5563; border-radius: 12px;
       padding: 0.7rem;
       font-family: "Consolas","Liberation Mono","Menlo",monospace;
       font-size: 0.84rem;
@@ -270,15 +280,16 @@
     .btn {
       display: inline-flex; align-items: center; gap: 0.35rem;
       border: 1px solid var(--border);
-      background: #1c2530; color: var(--text);
-      border-radius: 7px; padding: 0.42rem 0.85rem;
+      background: #2b2930; color: var(--text);
+      border-radius: 999px; padding: 0.48rem 0.95rem;
       cursor: pointer; font-size: 0.85rem; font-weight: 600;
       white-space: nowrap;
+      box-shadow: var(--shadow);
     }
-    .btn:hover { border-color: #4b5d70; }
-    .btn.primary  { background: #0f3460; border-color: #2563eb; }
-    .btn.danger   { background: #4a1c1c; border-color: #991b1b; }
-    .btn.warn     { background: #4b2f08; border-color: #92400e; }
+    .btn:hover { border-color: #6e6880; }
+    .btn.primary  { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+    .btn.danger   { background: #4a2322; border-color: #8c3c39; color: #ffdad6; }
+    .btn.warn     { background: #4d3821; border-color: #8a6b44; color: #ffdea6; }
     .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
 
     /* ── toast ── */
@@ -303,6 +314,20 @@
     @media (max-width: 680px) {
       nav { display: none; }
       main { padding: 0.75rem; }
+    }
+
+    .build-meta {
+      margin-top: 0.75rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-align: right;
+    }
+    .build-meta a {
+      color: #93c5fd;
+      text-decoration: none;
+    }
+    .build-meta a:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
@@ -452,6 +477,13 @@ SOURCE_PATH_1=/mnt/photos"></textarea>
       <div class="panel" style="padding:0.5rem">
         <pre id="log-output" class="mono">No log yet.</pre>
       </div>
+    </div>
+
+    <div class="build-meta">
+      Web UI build:
+      <a id="build-version-link" href="__GOTOHP_COMMIT_URL__" target="_blank" rel="noopener noreferrer">
+        __GOTOHP_VERSION__ (__GOTOHP_COMMIT__)
+      </a>
     </div>
   </main>
 </div>

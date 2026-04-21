@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,464 @@
+@@ -0,0 +1,473 @@
 +//go:build cli
 +
 +package main
@@ -301,9 +301,12 @@ index 0000000..30f107c
 +	}
 +
 +	pid := cmd.Process.Pid
-+	if err := os.WriteFile(s.pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
-+		syscall.Kill(-pid, syscall.SIGTERM)
++	if err := os.WriteFile(s.pidFile, []byte(strconv.Itoa(pid)), 0600); err != nil {
++		if killErr := syscall.Kill(-pid, syscall.SIGTERM); killErr != nil {
++			_ = syscall.Kill(pid, syscall.SIGTERM)
++		}
 +		logF.Close()
++		_ = os.Remove(s.logFile)
 +		jsonError(w, "failed to write pid file", http.StatusInternalServerError)
 +		return
 +	}
@@ -341,7 +344,9 @@ index 0000000..30f107c
 +	}
 +
 +	// Kill the entire process group (backup.sh + child gotohp processes).
-+	syscall.Kill(-pid, syscall.SIGTERM)
++	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
++		_ = syscall.Kill(pid, syscall.SIGTERM)
++	}
 +	os.Remove(s.pidFile)
 +
 +	jsonReply(w, http.StatusOK, "ok", "cancel signal sent", 0)
@@ -386,6 +391,10 @@ index 0000000..30f107c
 +		if err := os.Rename(tmpFile, s.configFile); err != nil {
 +			_ = os.Remove(tmpFile)
 +			http.Error(w, "failed to write config", http.StatusInternalServerError)
++			return
++		}
++		if err := os.Chmod(s.configFile, 0600); err != nil {
++			http.Error(w, "failed to secure config file", http.StatusInternalServerError)
 +			return
 +		}
 +		w.Write([]byte("Config saved to /.env"))

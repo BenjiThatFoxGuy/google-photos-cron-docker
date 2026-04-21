@@ -49,6 +49,8 @@ function start_webui() {
     fi
 
     if [[ -z "${WEBUI_BIND}" ]]; then
+        # Default to loopback unless auth appears configured; this avoids
+        # accidentally exposing an unauthenticated UI when only WEBUI_PORT is set.
         if [[ -n "${WEBUI_AUTH}" || -n "${WEBUI_USERNAME}" || -n "${WEBUI_PASSWORD}" || -n "${WEBUI_TOKEN}" ]]; then
             WEBUI_BIND="0.0.0.0"
         else

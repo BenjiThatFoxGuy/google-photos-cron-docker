@@ -61,8 +61,15 @@ function export_env_file() {
     fi
 
     if [[ -n "${WEBUI_OVERRIDE_FILE:-}" && -f "${WEBUI_OVERRIDE_FILE}" ]]; then
-        color blue "Found web UI override file, exporting variables"
-        export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"
+        local override_mode
+        override_mode="$(stat -c '%a' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null || true)"
+        # 022 == group-write (020) + world-write (002) bits.
+        if [[ -n "${override_mode}" ]] && (( (8#${override_mode} & 8#022) != 0 )); then
+            color yellow "Skipping insecure web UI override file (${WEBUI_OVERRIDE_FILE}): permissions ${override_mode}"
+        else
+            color blue "Found web UI override file (${WEBUI_OVERRIDE_FILE}), exporting variables"
+            export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"
+        fi
     fi
 }
 
