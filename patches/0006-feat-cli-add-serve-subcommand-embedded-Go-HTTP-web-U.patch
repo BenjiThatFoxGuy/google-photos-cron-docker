@@ -1,38 +1,16 @@
-From cce123370a93f4f4aba1fb5f882f10c5338dd669 Mon Sep 17 00:00:00 2001
-From: Build <patch@build>
-Date: Mon, 20 Apr 2026 23:35:47 +0000
+From 3ec6466622e3678214ef5675b551dfd017162a05 Mon Sep 17 00:00:00 2001
+From: Dockerfile <build@dockerfile>
+Date: Tue, 21 Apr 2026 00:03:44 +0000
 Subject: [PATCH] =?UTF-8?q?feat(cli):=20add=20"serve"=20subcommand=20?=
  =?UTF-8?q?=E2=80=94=20embedded=20Go=20HTTP=20web=20UI=20server?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Replaces the busybox httpd + CGI shell script approach with a
-self-contained HTTP server in the gotohp binary (serve subcommand).
-
-Usage:
-  gotohp serve [--bind ADDR] [--port PORT]
-  (defaults: WEBUI_BIND env / 0.0.0.0, WEBUI_PORT env / 5572)
-
-Endpoints:
-  GET  /            → embedded index.html (go:embed webui/index.html)
-  GET  /api/status  → JSON: scheduler state + live progress + cron + log tail
-  POST /api/run     → start manual backup via /app/backup.sh (guarded against overlap)
-  POST /api/cancel  → SIGTERM to backup process group
-  GET  /api/config  → read /.env
-  POST /api/config  → validate + write /.env (session-only message if file absent)
-
-Progress is still read from the JSON file written by progress_writer.go
-during upload runs (different process invocations). The serve process
-reads it; upload processes write it.
-
-The webui/index.html file is not included in this patch — it is provided
-by the container build (COPY scripts/webui/index.html /gotohp/webui/index.html)
-so it can be updated without regenerating Go patches.
 ---
  cli_shared.go   |  19 +++
- webui_server.go | 441 ++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 460 insertions(+)
+ webui_server.go | 444 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 463 insertions(+)
  create mode 100644 webui_server.go
 
 diff --git a/cli_shared.go b/cli_shared.go
@@ -74,10 +52,10 @@ index 28537ac..6550700 100644
  		printCLIHelp()
 diff --git a/webui_server.go b/webui_server.go
 new file mode 100644
-index 0000000..e0e7b99
+index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,441 @@
+@@ -0,0 +1,444 @@
 +//go:build cli
 +
 +package main
@@ -478,6 +456,9 @@ index 0000000..e0e7b99
 +			continue
 +		}
 +		if !isConfigKeyForEditor(k) {
++			continue
++		}
++		if strings.TrimSpace(v) == "" {
 +			continue
 +		}
 +		keys = append(keys, k)

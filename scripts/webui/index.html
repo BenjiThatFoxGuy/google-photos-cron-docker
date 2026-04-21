@@ -637,7 +637,9 @@ function buildConfigTextFromState() {
   });
 
   for (const key of Object.keys(cfgState.extra).sort()) {
-    out.push(`${key}=${cfgState.extra[key]}`);
+    if (String(cfgState.extra[key] || '').trim() !== '') {
+      out.push(`${key}=${cfgState.extra[key]}`);
+    }
   }
 
   return out.join('\n');
@@ -671,7 +673,7 @@ function renderPairBuilder() {
       </div>
       <div class="cfg-row">
         <input data-field="source_path" data-idx="${idx}" placeholder="SOURCE_PATH_${idx}" value="${esc(pair.source_path || '')}">
-        <input data-field="album_name" data-idx="${idx}" placeholder="ALBUM_NAME_${idx}" value="${esc(pair.album_name || '')}">
+        <input data-field="album_name" data-idx="${idx}" placeholder="ALBUM_NAME_${idx} (optional)" value="${esc(pair.album_name || '')}">
         <input data-field="cron" data-idx="${idx}" placeholder="CRON_${idx} (optional)" value="${esc(pair.cron || '')}">
       </div>
     </div>
