@@ -138,14 +138,14 @@ jobs:
           branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
           # Sanitize branch name to a Docker tag-safe value.
-          # - normalize slashes and other separators to '-'
+          # - replace branch path separators ('/') with '__'
           # - keep only [a-z0-9._-]
-          # - collapse repeated separators
+          # - collapse repeated '-'
           # - trim leading/trailing separators
           # - cap length to avoid oversized tags
           branch_tag="$(printf '%s' "${branch_name}" \
             | tr '[:upper:]' '[:lower:]' \
-            | sed -E 's/[[:space:]]+/-/g; s#/+/-#g; s/[^a-z0-9._-]+/-/g; s/[._-]{2,}/-/g; s/^-+//; s/-+$//' \
+            | sed -E 's#/+#__#g; s/[[:space:]]+/-/g; s/[^a-z0-9._-]+/-/g; s/-+/-/g; s/^[._-]+//; s/[._-]+$//' \
             | cut -c1-120)"
 
           # Fallback for fully-sanitized-empty branch names.
