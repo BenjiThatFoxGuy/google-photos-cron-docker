@@ -84,8 +84,10 @@ STATUS_LAST_START="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 function write_backup_status() {
     local state="$1"
     local exit_code="$2"
-    local last_end
-    last_end="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    local last_end=""
+    if [[ "${state}" != "RUNNING" ]]; then
+        last_end="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    fi
     {
         echo "STATE=${state}"
         echo "LAST_START=${STATUS_LAST_START}"

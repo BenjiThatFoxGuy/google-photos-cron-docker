@@ -102,7 +102,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           # Nightly must always build from main.
-          ref: ${{ github.event_name == 'schedule' && 'refs/heads/main' || github.ref }}
+          # For pull_request events, check out the PR head SHA so the built
+          # source matches the commit-based build metadata in the image.
+          ref: ${{ github.event_name == 'schedule' && 'refs/heads/main' || github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.ref }}
 
       # Set up QEMU so we can cross-compile for arm64.
       # Use mirror.gcr.io to avoid Docker Hub pull rate limits on GitHub runners.

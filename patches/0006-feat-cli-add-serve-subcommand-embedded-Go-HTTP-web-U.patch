@@ -224,7 +224,7 @@ index 0000000..30f107c
 +
 +	// Live progress (written by progress_writer.go during upload runs)
 +	progress := json.RawMessage(`{"state":"idle","total_files":0,"total_bytes":0,"completed":0,"failed":0,"bytes_uploaded":0,"speed_bytes_per_sec":0,"eta_seconds":0,"threads":[],"recent_results":[]}`)
-+	if data, err := os.ReadFile(s.progressFile); err == nil && len(data) > 0 {
++	if data, err := os.ReadFile(s.progressFile); err == nil && len(data) > 0 && json.Valid(data) {
 +		progress = json.RawMessage(data)
 +	}
 +
@@ -347,7 +347,8 @@ index 0000000..30f107c
 +	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
 +		_ = syscall.Kill(pid, syscall.SIGTERM)
 +	}
-+	os.Remove(s.pidFile)
++	// Keep the PID file in place — the reaper goroutine started by handleRun
++	// will remove it once the process exits, preventing a new run during shutdown.
 +
 +	jsonReply(w, http.StatusOK, "ok", "cancel signal sent", 0)
 +}
@@ -380,7 +381,7 @@ index 0000000..30f107c
 +			}
 +		}
 +		if _, err := os.Stat(s.configFile); os.IsNotExist(err) {
-+			w.Write([]byte("Note: /.env does not exist; changes are session-only and not persisted."))
++			http.Error(w, "config file /.env does not exist; changes were not saved", http.StatusConflict)
 +			return
 +		}
 +		tmpFile := s.configFile + ".tmp"

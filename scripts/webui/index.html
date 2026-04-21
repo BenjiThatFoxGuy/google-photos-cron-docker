@@ -462,7 +462,7 @@
 
         <textarea id="cfg-editor" spellcheck="false" placeholder="CRON=0 2 * * *
 GOTOHP_THREADS=4
-SOURCE_PATH_1=/mnt/photos"></textarea>
+SOURCE_PATH_0=/mnt/photos"></textarea>
         <pre id="cfg-result" class="mono" style="margin-top:0.5rem;max-height:120px"></pre>
       </div>
     </div>
@@ -539,9 +539,10 @@ function fmtSpeed(bps) {
 }
 function fmtETA(sec) {
   if (!sec || sec <= 0) return '—';
-  if (sec < 60) return Math.round(sec) + 's';
-  if (sec < 3600) return Math.round(sec / 60) + 'm ' + (Math.round(sec) % 60) + 's';
-  return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+  const t = Math.round(sec);
+  if (t < 60) return t + 's';
+  if (t < 3600) return Math.floor(t / 60) + 'm ' + (t % 60) + 's';
+  return Math.floor(t / 3600) + 'h ' + Math.floor((t % 3600) / 60) + 'm';
 }
 function fmtDate(s) {
   if (!s) return '—';
@@ -644,8 +645,8 @@ function parseConfigText(text) {
 
   const pairs = Array.from(pairsByIndex.entries())
     .sort((a, b) => a[0] - b[0])
-    .map(([_, pair]) => pair)
-    .filter(pair => Object.values(pair).some(v => String(v || '').trim() !== ''));
+    .filter(([, pair]) => Object.values(pair).some(v => String(v || '').trim() !== ''))
+    .map(([origIdx, pair]) => ({ ...pair, _origIdx: origIdx }));
 
   return { base, extra, pairs };
 }
@@ -658,7 +659,10 @@ function buildConfigTextFromState() {
     }
   }
 
-  cfgState.pairs.forEach((pair, idx) => {
+  cfgState.pairs.forEach((pair, arrayIdx) => {
+    // Preserve the original pair index (e.g. SOURCE_PATH_4) so that saving
+    // never silently renumbers keys or drops non-contiguous pairs.
+    const idx = (pair._origIdx !== undefined) ? pair._origIdx : arrayIdx;
     const pairEntries = [
       ['SOURCE_PATH', pair.source_path],
       ['ALBUM_NAME', pair.album_name],
@@ -709,19 +713,22 @@ function renderPairBuilder() {
     return;
   }
 
-  root.innerHTML = cfgState.pairs.map((pair, idx) => `
-    <div class="cfg-pair-card" data-idx="${idx}">
+  root.innerHTML = cfgState.pairs.map((pair, arrayIdx) => {
+    const origIdx = (pair._origIdx !== undefined) ? pair._origIdx : arrayIdx;
+    return `
+    <div class="cfg-pair-card" data-idx="${arrayIdx}">
       <div class="cfg-pair-head">
-        <div class="cfg-pair-index">Pair ${idx}</div>
-        <button class="btn danger" data-action="remove-pair" data-idx="${idx}" type="button">Remove</button>
+        <div class="cfg-pair-index">Pair ${origIdx}</div>
+        <button class="btn danger" data-action="remove-pair" data-idx="${arrayIdx}" type="button">Remove</button>
       </div>
       <div class="cfg-row">
-        <input data-field="source_path" data-idx="${idx}" placeholder="SOURCE_PATH_${idx}" value="${esc(pair.source_path || '')}">
-        <input data-field="album_name" data-idx="${idx}" placeholder="ALBUM_NAME_${idx} (optional)" value="${esc(pair.album_name || '')}">
-        <input data-field="cron" data-idx="${idx}" placeholder="CRON_${idx} (optional)" value="${esc(pair.cron || '')}">
+        <input data-field="source_path" data-idx="${arrayIdx}" placeholder="SOURCE_PATH_${origIdx}" value="${esc(pair.source_path || '')}">
+        <input data-field="album_name" data-idx="${arrayIdx}" placeholder="ALBUM_NAME_${origIdx} (optional)" value="${esc(pair.album_name || '')}">
+        <input data-field="cron" data-idx="${arrayIdx}" placeholder="CRON_${origIdx} (optional)" value="${esc(pair.cron || '')}">
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   root.querySelectorAll('input[data-field]').forEach(input => {
     input.addEventListener('input', e => {
@@ -941,7 +948,9 @@ document.getElementById('btn-save-cfg').addEventListener('click', () => {
   saveConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
 });
 document.getElementById('btn-add-pair').addEventListener('click', () => {
+  const maxIdx = cfgState.pairs.reduce((m, p) => Math.max(m, p._origIdx !== undefined ? p._origIdx : -1), -1);
   cfgState.pairs.push({
+    _origIdx: maxIdx + 1,
     source_path: '', album_name: '', cron: '',
     gotohp_threads: '', gotohp_recursive: '', gotohp_force: '', gotohp_delete: '',
     gotohp_disable_filter: '', gotohp_date_from_filename: '', gotohp_log_level: '',

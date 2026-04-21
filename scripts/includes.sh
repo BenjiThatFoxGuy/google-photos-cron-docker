@@ -93,11 +93,13 @@ function read_env_file_value() {
 }
 
 ########################################
-# Get a variable value from:
-#     environment variables,
-#     secret file in environment variables (_FILE suffix),
-#     secret file in .env file,
-#     environment variables in .env file.
+# Get a variable value, resolving in the following precedence (highest first):
+#     web UI override variable (WEBUI_OVERRIDE_<VAR>, from override file),
+#     web UI override file-secret (WEBUI_OVERRIDE_<VAR>_FILE),
+#     environment variable (<VAR>),
+#     secret file in environment variables (<VAR>_FILE),
+#     secret file in .env file (DOTENV_<VAR>_FILE),
+#     value from .env file (DOTENV_<VAR>).
 # Arguments:
 #     variable name
 # Outputs:

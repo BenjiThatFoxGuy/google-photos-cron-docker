@@ -66,10 +66,10 @@ docker compose run --rm photos-backup backup
 
 | Variable              | Default | Description |
 |-----------------------|---------|-------------|
-| `WEBUI_BIND`          | `0.0.0.0` | Interface/address for the web UI HTTP server |
+| `WEBUI_BIND`          | `127.0.0.1` when only `WEBUI_PORT` is set; `0.0.0.0` when auth env vars are also set | Interface/address for the web UI HTTP server |
 | `WEBUI_PORT`          | `5572`  | Port exposed by the web UI HTTP server |
 
-The web UI is automatically enabled if either `WEBUI_BIND` or `WEBUI_PORT` is specified. When enabled, the UI serves:
+The web UI is automatically enabled if either `WEBUI_BIND` or `WEBUI_PORT` is specified. When only `WEBUI_PORT` is set and no auth variables (`WEBUI_AUTH`, `WEBUI_USERNAME`, `WEBUI_PASSWORD`, `WEBUI_TOKEN`) are configured, the UI binds to loopback (`127.0.0.1`) to avoid accidental remote exposure. Set `WEBUI_BIND=0.0.0.0` explicitly to expose it on all interfaces. When enabled, the UI serves:
 
 - Live backup status cards (state, timestamps, exit code, pair scope)
 - Registered cron entries
