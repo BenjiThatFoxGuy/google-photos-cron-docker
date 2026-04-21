@@ -128,9 +128,46 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Derive branch image tag
+        id: branch_tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Use PR head branch when running in pull_request events.
+          branch_name="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+
+          # Sanitize branch name to a Docker tag-safe value.
+          # - normalize slashes and other separators to '-'
+          # - keep only [a-z0-9._-]
+          # - collapse repeated separators
+          # - trim leading/trailing separators
+          # - cap length to avoid oversized tags
+          branch_tag="$(printf '%s' "${branch_name}" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[[:space:]]+/-/g; s#/+/-#g; s/[^a-z0-9._-]+/-/g; s/[._-]{2,}/-/g; s/^-+//; s/-+$//' \
+            | cut -c1-120)"
+
+          # Fallback for fully-sanitized-empty branch names.
+          if [[ -z "${branch_tag}" ]]; then
+            branch_tag="branch-${GITHUB_SHA::12}"
+          fi
+
+          is_non_standard_branch=false
+          if [[ -n "${branch_name}" && "${branch_name}" != "main" && "${branch_name}" != "beta" ]]; then
+            is_non_standard_branch=true
+          fi
+
+          echo "branch_name=${branch_name}" >> "$GITHUB_OUTPUT"
+          echo "branch_tag=${branch_tag}" >> "$GITHUB_OUTPUT"
+          echo "is_non_standard_branch=${is_non_standard_branch}" >> "$GITHUB_OUTPUT"
+
       # Derive image tags and OCI labels automatically:
-      #   • nightly schedule / workflow_dispatch / pull_request  → nightly
-      #   • push of v1.2.3                                       → 1.2.3, 1.2, 1, latest
+      #   • schedule                                              → nightly
+      #   • push of v1.2.3                                        → 1.2.3, 1.2, 1, latest
+      #   • beta branch                                           → beta
+      #   • non-standard branch (push or PR head branch)          → sanitized branch tag
+      #   • workflow_dispatch fallback                            → sha-<short>
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -143,8 +180,14 @@ jobs:
             type=semver,pattern={{major}}
             # "latest" on any tag push
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
-            # "nightly" on schedule, manual dispatch, PR push, or non-default branch push
-            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) }}
+            # "nightly" only on timed schedule
+            type=raw,value=nightly,enable=${{ github.event_name == 'schedule' }}
+            # Publish a static beta tag for beta branch builds
+            type=raw,value=beta,enable=${{ steps.branch_tag.outputs.branch_name == 'beta' }}
+            # Publish sanitized branch-name tags for non-standard branches
+            type=raw,value=${{ steps.branch_tag.outputs.branch_tag }},enable=${{ steps.branch_tag.outputs.is_non_standard_branch == 'true' }}
+            # Ensure workflow_dispatch always has at least one tag
+            type=sha,prefix=sha-,format=short,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
