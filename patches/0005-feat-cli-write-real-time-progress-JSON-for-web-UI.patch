@@ -37,17 +37,41 @@ diff --git a/cli.go b/cli.go
 index 9d2bf89..07fc2c6 100644
 --- a/cli.go
 +++ b/cli.go
-@@ -296,8 +296,13 @@ func runCLIUpload(filePaths []string, config cliConfig) error {
+@@ -296,8 +296,37 @@ func runCLIUpload(filePaths []string, config cliConfig) error {
  	model := initialModel()
  	r, w, _ := os.Pipe(); if w != nil { w.Close() }; if r == nil { r = os.Stdin }; p := tea.NewProgram(model, tea.WithInput(r))
  
 +	// Progress writer: writes structured JSON for the web UI on every event.
 +	pw := newProgressWriter()
++	type progressEvent struct {
++		event string
++		data  any
++	}
++	progressEvents := make(chan progressEvent, 64)
++	defer close(progressEvents)
++	go func() {
++		for pe := range progressEvents {
++			pw.handleEvent(pe.event, pe.data)
++		}
++	}()
 +
  	// Create CLI app with event callback to bubbletea
  	eventCallback := func(event string, data any) {
-+		// Fan-out to the progress file writer first (non-blocking, has own lock).
-+		pw.handleEvent(event, data)
++		// Fan-out to the progress file writer without inline JSON/disk I/O.
++		pe := progressEvent{event: event, data: data}
++		select {
++		case progressEvents <- pe:
++		default:
++			// Coalesce under backpressure by dropping one pending update.
++			select {
++			case <-progressEvents:
++			default:
++			}
++			select {
++			case progressEvents <- pe:
++			default:
++			}
++		}
  		switch event {
  		case "uploadStart":
  			if start, ok := data.(backend.UploadBatchStart); ok {
@@ -56,7 +80,7 @@ new file mode 100644
 index 0000000..53fa687
 --- /dev/null
 +++ b/progress_writer.go
-@@ -0,0 +1,266 @@
+@@ -0,0 +1,274 @@
 +package main
 +
 +import (
@@ -315,14 +339,21 @@ index 0000000..53fa687
 +func (pw *progressWriter) flush() {
 +	data, err := json.Marshal(&pw.state)
 +	if err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to marshal progress state: " + err.Error() + "\n")
++		return
++	}
++	if err := os.MkdirAll(filepath.Dir(pw.filePath), 0755); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to create progress directory: " + err.Error() + "\n")
 +		return
 +	}
 +	tmp := pw.filePath + ".tmp"
 +	if err := os.WriteFile(tmp, data, 0644); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to write progress file: " + err.Error() + "\n")
 +		return
 +	}
-+	_ = os.Rename(tmp, pw.filePath)
++	if err := os.Rename(tmp, pw.filePath); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to rename progress file: " + err.Error() + "\n")
++	}
 +}
 -- 
 2.53.0
-

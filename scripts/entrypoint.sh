@@ -37,6 +37,10 @@ function start_webui() {
     # Resolve from environment and /.env first.
     get_env WEBUI_BIND
     get_env WEBUI_PORT
+    get_env WEBUI_AUTH
+    get_env WEBUI_USERNAME
+    get_env WEBUI_PASSWORD
+    get_env WEBUI_TOKEN
 
     # Auto-detect if web UI should be enabled based on configured values.
     if [[ -z "${WEBUI_BIND}" && -z "${WEBUI_PORT}" ]]; then
@@ -44,7 +48,13 @@ function start_webui() {
         return
     fi
 
-    WEBUI_BIND="${WEBUI_BIND:-0.0.0.0}"
+    if [[ -z "${WEBUI_BIND}" ]]; then
+        if [[ -n "${WEBUI_AUTH}" || -n "${WEBUI_USERNAME}" || -n "${WEBUI_PASSWORD}" || -n "${WEBUI_TOKEN}" ]]; then
+            WEBUI_BIND="0.0.0.0"
+        else
+            WEBUI_BIND="127.0.0.1"
+        fi
+    fi
     WEBUI_PORT="${WEBUI_PORT:-5572}"
 
     color blue "Starting web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"

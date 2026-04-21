@@ -60,7 +60,10 @@ function export_env_file() {
         export_prefixed_env_file "/.env" "DOTENV_"
     fi
 
-
+    if [[ -n "${WEBUI_OVERRIDE_FILE:-}" && -f "${WEBUI_OVERRIDE_FILE}" ]]; then
+        color blue "Found web UI override file, exporting variables"
+        export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"
+    fi
 }
 
 ########################################
@@ -96,11 +99,17 @@ function read_env_file_value() {
 function get_env() {
     local VAR="$1"
     local VAR_FILE="${VAR}_FILE"
+    local VAR_WEBUI_OVERRIDE="WEBUI_OVERRIDE_${VAR}"
+    local VAR_WEBUI_OVERRIDE_FILE="WEBUI_OVERRIDE_${VAR_FILE}"
     local VAR_DOTENV="DOTENV_${VAR}"
     local VAR_DOTENV_FILE="DOTENV_${VAR_FILE}"
     local VALUE=""
 
-    if [[ -n "${!VAR:-}" ]]; then
+    if [[ -n "${!VAR_WEBUI_OVERRIDE:-}" ]]; then
+        VALUE="${!VAR_WEBUI_OVERRIDE}"
+    elif [[ -n "${!VAR_WEBUI_OVERRIDE_FILE:-}" ]]; then
+        VALUE="$(read_env_file_value "${!VAR_WEBUI_OVERRIDE_FILE}")"
+    elif [[ -n "${!VAR:-}" ]]; then
         VALUE="${!VAR}"
     elif [[ -n "${!VAR_FILE:-}" ]]; then
         VALUE="$(read_env_file_value "${!VAR_FILE}")"

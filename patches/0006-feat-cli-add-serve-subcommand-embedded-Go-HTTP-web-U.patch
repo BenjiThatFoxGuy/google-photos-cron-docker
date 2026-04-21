@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,444 @@
+@@ -0,0 +1,464 @@
 +//go:build cli
 +
 +package main
@@ -274,6 +274,15 @@ index 0000000..30f107c
 +		}
 +	}
 +
++	if err := os.MkdirAll(filepath.Dir(s.logFile), 0755); err != nil {
++		jsonError(w, "failed to prepare log directory", http.StatusInternalServerError)
++		return
++	}
++	if err := os.MkdirAll(filepath.Dir(s.pidFile), 0755); err != nil {
++		jsonError(w, "failed to prepare pid directory", http.StatusInternalServerError)
++		return
++	}
++
 +	logF, err := os.Create(s.logFile)
 +	if err != nil {
 +		jsonError(w, "failed to create log file", http.StatusInternalServerError)
@@ -292,7 +301,12 @@ index 0000000..30f107c
 +	}
 +
 +	pid := cmd.Process.Pid
-+	os.WriteFile(s.pidFile, []byte(strconv.Itoa(pid)), 0644)
++	if err := os.WriteFile(s.pidFile, []byte(strconv.Itoa(pid)), 0644); err != nil {
++		syscall.Kill(-pid, syscall.SIGTERM)
++		logF.Close()
++		jsonError(w, "failed to write pid file", http.StatusInternalServerError)
++		return
++	}
 +
 +	// Reap the child and clean up the PID file when it exits.
 +	go func() {
@@ -364,7 +378,13 @@ index 0000000..30f107c
 +			w.Write([]byte("Note: /.env does not exist; changes are session-only and not persisted."))
 +			return
 +		}
-+		if err := os.WriteFile(s.configFile, body, 0644); err != nil {
++		tmpFile := s.configFile + ".tmp"
++		if err := os.WriteFile(tmpFile, body, 0600); err != nil {
++			http.Error(w, "failed to write config", http.StatusInternalServerError)
++			return
++		}
++		if err := os.Rename(tmpFile, s.configFile); err != nil {
++			_ = os.Remove(tmpFile)
 +			http.Error(w, "failed to write config", http.StatusInternalServerError)
 +			return
 +		}
@@ -502,4 +522,3 @@ index 0000000..30f107c
 +}
 -- 
 2.53.0
-
