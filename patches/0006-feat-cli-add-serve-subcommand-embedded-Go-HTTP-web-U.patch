@@ -307,7 +307,7 @@ index 0000000..30f107c
 +		}
 +		logF.Close()
 +		_ = os.Remove(s.logFile)
-+		jsonError(w, "failed to write pid file", http.StatusInternalServerError)
++		jsonError(w, "failed to write pid file; backup process terminated", http.StatusInternalServerError)
 +		return
 +	}
 +

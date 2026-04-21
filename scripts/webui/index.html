@@ -493,6 +493,13 @@ SOURCE_PATH_1=/mnt/photos"></textarea>
 <script>
 'use strict';
 
+const buildVersionLink = document.getElementById('build-version-link');
+if (buildVersionLink && buildVersionLink.href.includes('__GOTOHP_COMMIT_URL__')) {
+  buildVersionLink.removeAttribute('href');
+  buildVersionLink.removeAttribute('target');
+  buildVersionLink.textContent = 'development build';
+}
+
 // ── navigation ───────────────────────────────────────────────────────────────
 document.querySelectorAll('nav a[data-page]').forEach(link => {
   link.addEventListener('click', () => {

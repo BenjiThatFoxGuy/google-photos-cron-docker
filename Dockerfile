@@ -40,7 +40,7 @@ RUN git config user.email "build@dockerfile" \
 
 # Copy the web UI HTML so it is available for go:embed at compile time.
 COPY scripts/webui/index.html /gotohp/webui/index.html
-RUN UPSTREAM_COMMIT="$(git rev-list -n 1 "${GOTOHP_VERSION}" | cut -c1-12)" \
+RUN UPSTREAM_COMMIT="$(git rev-parse --short=12 HEAD)" \
     && sed -i \
       -e "s|__GOTOHP_VERSION__|${GOTOHP_VERSION}|g" \
       -e "s|__GOTOHP_COMMIT__|${UPSTREAM_COMMIT}|g" \
