@@ -100,6 +100,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Nightly must always build from main.
+          ref: ${{ github.event_name == 'schedule' && 'refs/heads/main' || github.ref }}
 
       # Set up QEMU so we can cross-compile for arm64.
       # Use mirror.gcr.io to avoid Docker Hub pull rate limits on GitHub runners.
