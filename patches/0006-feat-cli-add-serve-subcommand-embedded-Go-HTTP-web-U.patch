@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,473 @@
+@@ -0,0 +1,474 @@
 +//go:build cli
 +
 +package main
