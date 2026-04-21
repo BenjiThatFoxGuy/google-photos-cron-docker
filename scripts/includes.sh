@@ -158,18 +158,33 @@ function get_source_album_list() {
     GOTOHP_EMAIL_LIST=()
     CRON_LIST=()
 
-    local i=0
+    # Discover all SOURCE_PATH_N indices present in the environment, including
+    # DOTENV_* (from /.env) and WEBUI_OVERRIDE_* prefixes used by get_env.
+    # Sorting numerically means non-contiguous indices (e.g. 0, 1, 5, 7) are
+    # all honoured without stopping at the first gap.
+    local -a _sp_indices=()
+    local _sp_idx
+    while IFS= read -r _sp_idx; do
+        _sp_indices+=("${_sp_idx}")
+    done < <(
+        compgen -v \
+        | grep -E '^(DOTENV_|WEBUI_OVERRIDE_)?SOURCE_PATH_[0-9]+(_FILE)?$' \
+        | grep -oE '[0-9]+' \
+        | sort -un
+    )
+
+    local i
     local SOURCE_PATH_X_REFER
     local ALBUM_NAME_X_REFER
 
-    while true; do
+    for i in "${_sp_indices[@]}"; do
         SOURCE_PATH_X_REFER="SOURCE_PATH_${i}"
         ALBUM_NAME_X_REFER="ALBUM_NAME_${i}"
         get_env "${SOURCE_PATH_X_REFER}"
         get_env "${ALBUM_NAME_X_REFER}"
 
         if [[ -z "${!SOURCE_PATH_X_REFER}" ]]; then
-            break
+            continue
         fi
 
         SOURCE_PATHS+=("${!SOURCE_PATH_X_REFER}")
@@ -209,7 +224,6 @@ function get_source_album_list() {
         GOTOHP_EMAIL_LIST+=("${!EMAIL_X}")
         CRON_LIST+=("${!CRON_X}")
 
-        ((i++))
     done
 }
 
