@@ -41,16 +41,14 @@ RUN git config user.email "build@dockerfile" \
     && git am /patches/*.patch
 
 # Copy the web UI HTML so it is available for go:embed at compile time.
+# Replace the __GOTOHP_VERSION__ placeholder with the actual upstream tag, and
+# inject this repo's branch/commit into the two meta tags when the build args
+# are supplied by CI.
 COPY scripts/webui/index.html /gotohp/webui/index.html
-RUN UPSTREAM_COMMIT="$(git rev-parse --short=12 HEAD)" \
-    && escape_sed() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; } \
+RUN escape_sed() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; } \
     && GOTOHP_VERSION_ESC="$(escape_sed "${GOTOHP_VERSION}")" \
-    && UPSTREAM_COMMIT_ESC="$(escape_sed "${UPSTREAM_COMMIT}")" \
-    && UPSTREAM_COMMIT_URL_ESC="$(escape_sed "https://github.com/xob0t/gotohp/commit/${UPSTREAM_COMMIT}")" \
     && sed -i \
       -e "s|__GOTOHP_VERSION__|${GOTOHP_VERSION_ESC}|g" \
-      -e "s|__GOTOHP_COMMIT__|${UPSTREAM_COMMIT_ESC}|g" \
-      -e "s|__GOTOHP_COMMIT_URL__|${UPSTREAM_COMMIT_URL_ESC}|g" \
       /gotohp/webui/index.html \
     && if [ -n "${DOCKER_BRANCH}" ]; then \
          DOCKER_COMMIT_SHORT="$(printf '%s' "${DOCKER_COMMIT}" | cut -c1-12)"; \

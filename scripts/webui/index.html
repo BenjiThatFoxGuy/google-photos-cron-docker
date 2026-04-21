@@ -321,12 +321,28 @@
       font-size: 0.78rem;
       text-align: right;
     }
-    .build-meta a {
-      color: #93c5fd;
-      text-decoration: none;
+    .build-meta #bv-docker { color: #93c5fd; }
+
+    /* ── accent color picker ── */
+    .nav-appearance { padding: 0 0.75rem 0.75rem; margin-top: auto; }
+    .accent-swatches {
+      display: flex; flex-wrap: wrap; gap: 0.35rem;
+      padding: 0.25rem 0 0.4rem;
     }
-    .build-meta a:hover {
-      text-decoration: underline;
+    .accent-swatch {
+      width: 20px; height: 20px; border-radius: 50%;
+      border: 2px solid transparent; cursor: pointer;
+      transition: transform 120ms, border-color 120ms;
+      padding: 0;
+    }
+    .accent-swatch:hover, .accent-swatch.active { transform: scale(1.15); border-color: var(--text); }
+    .accent-custom-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.78rem; color: var(--muted); cursor: pointer;
+    }
+    .accent-custom-row input[type="color"] {
+      width: 22px; height: 22px; border: none; background: none;
+      border-radius: 50%; cursor: pointer; padding: 0;
     }
   </style>
 </head>
@@ -344,6 +360,22 @@
     <a data-page="config">&#9881; Config Editor</a>
     <div class="nav-section">Diagnostics</div>
     <a data-page="log">&#9654; Log</a>
+    <div class="nav-section" style="margin-top:auto">Appearance</div>
+    <div class="nav-appearance">
+      <div class="accent-swatches" id="accent-swatches">
+        <button class="accent-swatch" data-accent="#d0bcff" title="Lavender" style="background:#d0bcff"></button>
+        <button class="accent-swatch" data-accent="#89cff0" title="Sky" style="background:#89cff0"></button>
+        <button class="accent-swatch" data-accent="#80cbc4" title="Teal" style="background:#80cbc4"></button>
+        <button class="accent-swatch" data-accent="#b5ccb8" title="Sage" style="background:#b5ccb8"></button>
+        <button class="accent-swatch" data-accent="#ffb77c" title="Peach" style="background:#ffb77c"></button>
+        <button class="accent-swatch" data-accent="#ffb4ab" title="Rose" style="background:#ffb4ab"></button>
+        <button class="accent-swatch" data-accent="#ffd580" title="Gold" style="background:#ffd580"></button>
+      </div>
+      <label class="accent-custom-row" title="Pick a custom accent color">
+        <span>Custom</span>
+        <input type="color" id="accent-picker" value="#d0bcff">
+      </label>
+    </div>
   </nav>
 
   <main>
@@ -479,10 +511,7 @@ SOURCE_PATH_0=/mnt/photos"></textarea>
     </div>
 
     <div class="build-meta">
-      Web UI build:
-      <a id="build-version-link" href="__GOTOHP_COMMIT_URL__" target="_blank" rel="noopener noreferrer">
-        __GOTOHP_VERSION__ (__GOTOHP_COMMIT__)
-      </a>
+      gotohp <span id="bv-gotohp">__GOTOHP_VERSION__</span><span id="bv-docker"></span>
     </div>
   </main>
 </div>
@@ -492,23 +521,57 @@ SOURCE_PATH_0=/mnt/photos"></textarea>
 <script>
 'use strict';
 
-const buildVersionLink = document.getElementById('build-version-link');
-const dockerBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
-const dockerCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
-if (buildVersionLink) {
-  if (dockerBranch && dockerBranch !== '__DOCKER_BRANCH__') {
-    // Docker build with branch/commit injected — show branch ⇧ commit instead of the link.
-    buildVersionLink.removeAttribute('href');
-    buildVersionLink.removeAttribute('target');
-    buildVersionLink.textContent = dockerBranch + ' \u2387 ' + dockerCommit;
-  } else if (buildVersionLink.href.includes('__GOTOHP_COMMIT_URL__')) {
-    // Placeholder was never replaced — running outside Docker (development).
-    buildVersionLink.removeAttribute('href');
-    buildVersionLink.removeAttribute('target');
-    buildVersionLink.textContent = 'development build';
+// ── version metadata ─────────────────────────────────────────────────────────
+{
+  const bvGotohp = document.getElementById('bv-gotohp');
+  const bvDocker = document.getElementById('bv-docker');
+  const metaBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
+  const metaCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
+  if (bvGotohp) {
+    if (bvGotohp.textContent.trim() === '__GOTOHP_VERSION__') {
+      // Placeholder not replaced — running outside a Docker build (development).
+      bvGotohp.textContent = 'development';
+    } else if (bvDocker && metaBranch && metaBranch !== '__DOCKER_BRANCH__') {
+      // Docker build with CI metadata — show this repo's branch ⇧ short commit.
+      const shortCommit = (metaCommit && metaCommit !== '__DOCKER_COMMIT__') ? metaCommit.slice(0, 12) : '';
+      bvDocker.textContent = '\u00a0\u00b7\u00a0' + metaBranch + (shortCommit ? ' \u2387 ' + shortCommit : '');
+    }
   }
-  // Otherwise the link already points to the correct gotohp commit URL — leave it.
 }
+
+// ── accent color ─────────────────────────────────────────────────────────────
+function applyAccent(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const dimHex = '#' + [Math.round(r * 0.82), Math.round(g * 0.82), Math.round(b * 0.82)]
+    .map(v => Math.min(255, v).toString(16).padStart(2, '0')).join('');
+  // Relative luminance — pick a dark text for light accents, light for dark ones.
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const textHex = lum > 0.45 ? '#1a1a2e' : '#e8eaed';
+  const root = document.documentElement;
+  root.style.setProperty('--accent', hex);
+  root.style.setProperty('--accent-dim', dimHex);
+  root.style.setProperty('--accent-text', textHex);
+  localStorage.setItem('accentColor', hex);
+  // Sync color picker thumb
+  const picker = document.getElementById('accent-picker');
+  if (picker) picker.value = hex;
+  // Mark active swatch
+  document.querySelectorAll('.accent-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.accent === hex);
+  });
+}
+// Restore saved accent (or leave CSS default if nothing saved)
+const _savedAccent = localStorage.getItem('accentColor');
+if (_savedAccent) applyAccent(_savedAccent);
+// Swatch clicks
+document.getElementById('accent-swatches')?.addEventListener('click', e => {
+  const swatch = e.target.closest('.accent-swatch');
+  if (swatch) applyAccent(swatch.dataset.accent);
+});
+// Custom color picker
+document.getElementById('accent-picker')?.addEventListener('input', e => applyAccent(e.target.value));
 
 // ── navigation ───────────────────────────────────────────────────────────────
 document.querySelectorAll('nav a[data-page]').forEach(link => {
