@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>google-photos-cron-docker</title>
+  <meta name="docker-build-branch" content="__DOCKER_BRANCH__">
+  <meta name="docker-build-commit" content="__DOCKER_COMMIT__">
   <style>
     :root {
       --bg:           #121318;
@@ -21,12 +23,12 @@
       --mono-bg:      #15121a;
       --pill-r:       999px;
       --radius:       16px;
-      --shadow:       0 1px 1px rgba(0,0,0,.25), 0 2px 8px rgba(0,0,0,.25);
+      --shadow:       0 1px 2px rgba(0,0,0,.3);
     }
     *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0; padding: 0;
-      background: radial-gradient(circle at 10% 0, #1a1f2b, var(--bg) 45%);
+      background: var(--bg);
       color: var(--text);
       font-family: "Roboto Flex", "Noto Sans", system-ui, sans-serif;
       font-size: 14px;
@@ -76,21 +78,19 @@
     h3 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
 
     .panel {
-      background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+      background: var(--panel);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 1rem;
       margin-bottom: 0.85rem;
-      box-shadow: var(--shadow);
     }
 
     .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.85rem; }
     .stat-card {
-      background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+      background: var(--panel-hi);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 0.85rem 1rem;
-      box-shadow: var(--shadow);
     }
     .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
     .stat-card .value { font-size: 1.15rem; font-weight: 700; margin-top: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -118,7 +118,7 @@
     }
     .prog-fill {
       height: 100%; width: 0;
-      background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+      background: var(--accent);
       transition: width 300ms ease;
     }
     .prog-fill.error { background: var(--danger); }
@@ -185,7 +185,7 @@
       margin-bottom: 0.75rem;
     }
     .cfg-kpi {
-      background: linear-gradient(160deg, #141d2a 0%, #111822 100%);
+      background: #141d2a;
       border: 1px solid #233247;
       border-radius: 10px;
       padding: 0.6rem 0.8rem;
@@ -205,7 +205,7 @@
     .cfg-builder {
       border: 1px solid #294162;
       border-radius: 10px;
-      background: linear-gradient(180deg, rgba(59,130,246,.08), rgba(59,130,246,.02));
+      background: rgba(59,130,246,.06);
       padding: 0.75rem;
       margin: 0.5rem 0 0.75rem;
     }
@@ -284,7 +284,6 @@
       border-radius: 999px; padding: 0.48rem 0.95rem;
       cursor: pointer; font-size: 0.85rem; font-weight: 600;
       white-space: nowrap;
-      box-shadow: var(--shadow);
     }
     .btn:hover { border-color: #6e6880; }
     .btn.primary  { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -497,7 +496,13 @@ const buildVersionLink = document.getElementById('build-version-link');
 if (buildVersionLink && buildVersionLink.href.includes('__GOTOHP_COMMIT_URL__')) {
   buildVersionLink.removeAttribute('href');
   buildVersionLink.removeAttribute('target');
-  buildVersionLink.textContent = 'development build';
+  const dockerBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
+  const dockerCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
+  if (!dockerBranch || dockerBranch === '__DOCKER_BRANCH__') {
+    buildVersionLink.textContent = 'development build';
+  } else {
+    buildVersionLink.textContent = dockerBranch + ' \u2387 ' + dockerCommit;
+  }
 }
 
 // ── navigation ───────────────────────────────────────────────────────────────

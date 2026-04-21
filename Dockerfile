@@ -23,6 +23,8 @@
 FROM golang:1.26-alpine AS builder
 
 ARG GOTOHP_VERSION=v0.7.0
+ARG DOCKER_BRANCH
+ARG DOCKER_COMMIT
 
 RUN apk add --no-cache git
 
@@ -45,7 +47,14 @@ RUN UPSTREAM_COMMIT="$(git rev-parse --short=12 HEAD)" \
       -e "s|__GOTOHP_VERSION__|${GOTOHP_VERSION}|g" \
       -e "s|__GOTOHP_COMMIT__|${UPSTREAM_COMMIT}|g" \
       -e "s|__GOTOHP_COMMIT_URL__|https://github.com/xob0t/gotohp/commit/${UPSTREAM_COMMIT}|g" \
-      /gotohp/webui/index.html
+      /gotohp/webui/index.html \
+    && if [ -n "${DOCKER_BRANCH}" ]; then \
+         DOCKER_COMMIT_SHORT="$(echo "${DOCKER_COMMIT}" | cut -c1-12)"; \
+         sed -i \
+           -e "s|__DOCKER_BRANCH__|${DOCKER_BRANCH}|g" \
+           -e "s|__DOCKER_COMMIT__|${DOCKER_COMMIT_SHORT}|g" \
+           /gotohp/webui/index.html; \
+       fi
 
 RUN CGO_ENABLED=0 go build \
         -tags cli \
