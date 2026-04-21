@@ -62,10 +62,15 @@ function export_env_file() {
 
     if [[ -n "${WEBUI_OVERRIDE_FILE:-}" && -f "${WEBUI_OVERRIDE_FILE}" ]]; then
         local override_mode
-        override_mode="$(stat -c '%a' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null || true)"
+        # GNU stat (Linux/BusyBox) uses -c '%a'; BSD stat uses -f '%OLp'.
+        # If neither succeeds, treat the file as insecure and skip it.
+        override_mode="$(stat -c '%a' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null \
+            || stat -f '%OLp' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null \
+            || true)"
         # 022 == group-write (020) + world-write (002) bits.
-        if [[ -n "${override_mode}" ]] && (( (8#${override_mode} & 8#022) != 0 )); then
-            color yellow "Skipping insecure web UI override file (${WEBUI_OVERRIDE_FILE}): permissions ${override_mode}"
+        # Empty mode (stat unavailable) is also treated as insecure.
+        if [[ -z "${override_mode}" ]] || (( (8#${override_mode} & 8#022) != 0 )); then
+            color yellow "Skipping insecure web UI override file (${WEBUI_OVERRIDE_FILE}): permissions ${override_mode:-unknown}"
         else
             color blue "Found web UI override file (${WEBUI_OVERRIDE_FILE}), exporting variables"
             export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"

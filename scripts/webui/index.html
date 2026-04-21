@@ -493,16 +493,21 @@ SOURCE_PATH_0=/mnt/photos"></textarea>
 'use strict';
 
 const buildVersionLink = document.getElementById('build-version-link');
-if (buildVersionLink && buildVersionLink.href.includes('__GOTOHP_COMMIT_URL__')) {
-  buildVersionLink.removeAttribute('href');
-  buildVersionLink.removeAttribute('target');
-  const dockerBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
-  const dockerCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
-  if (!dockerBranch || dockerBranch === '__DOCKER_BRANCH__') {
-    buildVersionLink.textContent = 'development build';
-  } else {
+const dockerBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
+const dockerCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
+if (buildVersionLink) {
+  if (dockerBranch && dockerBranch !== '__DOCKER_BRANCH__') {
+    // Docker build with branch/commit injected — show branch ⇧ commit instead of the link.
+    buildVersionLink.removeAttribute('href');
+    buildVersionLink.removeAttribute('target');
     buildVersionLink.textContent = dockerBranch + ' \u2387 ' + dockerCommit;
+  } else if (buildVersionLink.href.includes('__GOTOHP_COMMIT_URL__')) {
+    // Placeholder was never replaced — running outside Docker (development).
+    buildVersionLink.removeAttribute('href');
+    buildVersionLink.removeAttribute('target');
+    buildVersionLink.textContent = 'development build';
   }
+  // Otherwise the link already points to the correct gotohp commit URL — leave it.
 }
 
 // ── navigation ───────────────────────────────────────────────────────────────

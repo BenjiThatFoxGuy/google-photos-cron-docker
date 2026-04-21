@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,474 @@
+@@ -0,0 +1,482 @@
 +//go:build cli
 +
 +package main
@@ -175,8 +175,16 @@ index 0000000..30f107c
 +	mux.HandleFunc("/api/config", srv.handleConfig)
 +
 +	addr := net.JoinHostPort(bindAddr, port)
++	server := &http.Server{
++		Addr:              addr,
++		Handler:           mux,
++		ReadHeaderTimeout: 5 * time.Second,
++		ReadTimeout:       15 * time.Second,
++		WriteTimeout:      30 * time.Second,
++		IdleTimeout:       60 * time.Second,
++	}
 +	log.Printf("webui: listening on http://%s", addr)
-+	if err := http.ListenAndServe(addr, mux); err != nil {
++	if err := server.ListenAndServe(); err != nil {
 +		log.Fatalf("webui: %v", err)
 +	}
 +}

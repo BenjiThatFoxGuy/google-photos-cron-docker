@@ -88,13 +88,24 @@ function write_backup_status() {
     if [[ "${state}" != "RUNNING" ]]; then
         last_end="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     fi
-    {
+    local status_dir status_base tmp_status_file
+    status_dir="$(dirname "${BACKUP_STATUS_FILE}")"
+    status_base="$(basename "${BACKUP_STATUS_FILE}")"
+    tmp_status_file="$(mktemp "${status_dir}/${status_base}.tmp.XXXXXX")" || return 1
+    if ! {
         echo "STATE=${state}"
         echo "LAST_START=${STATUS_LAST_START}"
         echo "LAST_END=${last_end}"
         echo "EXIT_CODE=${exit_code}"
         echo "PAIR_INDICES=${PAIR_INDICES:-ALL}"
-    } > "${BACKUP_STATUS_FILE}"
+    } > "${tmp_status_file}"; then
+        rm -f "${tmp_status_file}"
+        return 1
+    fi
+    if ! mv -f "${tmp_status_file}" "${BACKUP_STATUS_FILE}"; then
+        rm -f "${tmp_status_file}"
+        return 1
+    fi
 }
 
 # 255 is used as a sentinel while a run is still in progress.

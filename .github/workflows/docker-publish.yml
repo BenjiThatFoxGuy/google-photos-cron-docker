@@ -203,7 +203,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            DOCKER_BRANCH=${{ steps.branch_tag.outputs.branch_name }}
+            DOCKER_BRANCH=${{ steps.branch_tag.outputs.branch_tag }}
             DOCKER_COMMIT=${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           # Layer cache speeds up repeat builds
           cache-from: type=gha

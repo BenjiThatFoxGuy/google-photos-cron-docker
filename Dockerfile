@@ -43,16 +43,22 @@ RUN git config user.email "build@dockerfile" \
 # Copy the web UI HTML so it is available for go:embed at compile time.
 COPY scripts/webui/index.html /gotohp/webui/index.html
 RUN UPSTREAM_COMMIT="$(git rev-parse --short=12 HEAD)" \
+    && escape_sed() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; } \
+    && GOTOHP_VERSION_ESC="$(escape_sed "${GOTOHP_VERSION}")" \
+    && UPSTREAM_COMMIT_ESC="$(escape_sed "${UPSTREAM_COMMIT}")" \
+    && UPSTREAM_COMMIT_URL_ESC="$(escape_sed "https://github.com/xob0t/gotohp/commit/${UPSTREAM_COMMIT}")" \
     && sed -i \
-      -e "s|__GOTOHP_VERSION__|${GOTOHP_VERSION}|g" \
-      -e "s|__GOTOHP_COMMIT__|${UPSTREAM_COMMIT}|g" \
-      -e "s|__GOTOHP_COMMIT_URL__|https://github.com/xob0t/gotohp/commit/${UPSTREAM_COMMIT}|g" \
+      -e "s|__GOTOHP_VERSION__|${GOTOHP_VERSION_ESC}|g" \
+      -e "s|__GOTOHP_COMMIT__|${UPSTREAM_COMMIT_ESC}|g" \
+      -e "s|__GOTOHP_COMMIT_URL__|${UPSTREAM_COMMIT_URL_ESC}|g" \
       /gotohp/webui/index.html \
     && if [ -n "${DOCKER_BRANCH}" ]; then \
-         DOCKER_COMMIT_SHORT="$(echo "${DOCKER_COMMIT}" | cut -c1-12)"; \
+         DOCKER_COMMIT_SHORT="$(printf '%s' "${DOCKER_COMMIT}" | cut -c1-12)"; \
+         DOCKER_BRANCH_ESC="$(escape_sed "${DOCKER_BRANCH}")"; \
+         DOCKER_COMMIT_SHORT_ESC="$(escape_sed "${DOCKER_COMMIT_SHORT}")"; \
          sed -i \
-           -e "s|__DOCKER_BRANCH__|${DOCKER_BRANCH}|g" \
-           -e "s|__DOCKER_COMMIT__|${DOCKER_COMMIT_SHORT}|g" \
+           -e "s|__DOCKER_BRANCH__|${DOCKER_BRANCH_ESC}|g" \
+           -e "s|__DOCKER_COMMIT__|${DOCKER_COMMIT_SHORT_ESC}|g" \
            /gotohp/webui/index.html; \
        fi
 
