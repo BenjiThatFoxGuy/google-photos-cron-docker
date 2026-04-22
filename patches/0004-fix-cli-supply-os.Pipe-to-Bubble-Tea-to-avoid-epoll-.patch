@@ -1,0 +1,38 @@
+From f037ad43f291355b49443a7edeed9084cf2c6b14 Mon Sep 17 00:00:00 2001
+From: Build <patch@build>
+Date: Mon, 20 Apr 2026 23:18:39 +0000
+Subject: [PATCH 4/4] fix(cli): supply os.Pipe() to Bubble Tea to avoid epoll
+ error in cron
+
+When stdin is /dev/null (as in a headless Docker cron job), the
+cancelreader package inside Bubble Tea fails to register /dev/null with
+epoll.  Supply an os.Pipe() read-end as the program input so Bubble Tea
+always receives an epoll-safe file descriptor.
+---
+ cli.go | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/cli.go b/cli.go
+index a0bfd08..9d2bf89 100644
+--- a/cli.go
++++ b/cli.go
+@@ -1,6 +1,7 @@
+ package main
+ 
+ import (
++	"os"
+ 	"encoding/json"
+ 	"fmt"
+ 	"log/slog"
+@@ -293,7 +294,7 @@ func runCLIUpload(filePaths []string, config cliConfig) error {
+ 
+ 	// Start bubbletea program
+ 	model := initialModel()
+-	p := tea.NewProgram(model)
++	r, w, _ := os.Pipe(); if w != nil { w.Close() }; if r == nil { r = os.Stdin }; p := tea.NewProgram(model, tea.WithInput(r))
+ 
+ 	// Create CLI app with event callback to bubbletea
+ 	eventCallback := func(event string, data any) {
+-- 
+2.53.0
+

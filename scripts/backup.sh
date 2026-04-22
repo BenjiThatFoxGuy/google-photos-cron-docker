@@ -77,6 +77,51 @@ color blue "Running backup at $(date +"%Y-%m-%d %H:%M:%S %Z")"
 
 init_env
 
+BACKUP_STATUS_FILE="${BACKUP_STATUS_FILE:-/tmp/backup-status.env}"
+mkdir -p "$(dirname "${BACKUP_STATUS_FILE}")"
+STATUS_LAST_START="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+function write_backup_status() {
+    local state="$1"
+    local exit_code="$2"
+    local last_end=""
+    if [[ "${state}" != "RUNNING" ]]; then
+        last_end="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    fi
+    local status_dir status_base tmp_status_file
+    status_dir="$(dirname "${BACKUP_STATUS_FILE}")"
+    status_base="$(basename "${BACKUP_STATUS_FILE}")"
+    tmp_status_file="$(mktemp "${status_dir}/${status_base}.tmp.XXXXXX")" || return 1
+    if ! {
+        echo "STATE=${state}"
+        echo "LAST_START=${STATUS_LAST_START}"
+        echo "LAST_END=${last_end}"
+        echo "EXIT_CODE=${exit_code}"
+        echo "PAIR_INDICES=${PAIR_INDICES:-ALL}"
+    } > "${tmp_status_file}"; then
+        rm -f "${tmp_status_file}"
+        return 1
+    fi
+    if ! mv -f "${tmp_status_file}" "${BACKUP_STATUS_FILE}"; then
+        rm -f "${tmp_status_file}"
+        return 1
+    fi
+}
+
+# 255 is used as a sentinel while a run is still in progress.
+write_backup_status "RUNNING" "255"
+
+function finalize_backup_status() {
+    local rc=$?
+    if [[ ${rc} -eq 0 ]]; then
+        write_backup_status "SUCCESS" "${rc}"
+    else
+        write_backup_status "FAILED" "${rc}"
+    fi
+}
+
+trap finalize_backup_status EXIT
+
 ########################################
 # Handle per-group overlap locking when PAIR_INDICES is set.
 # Uses a lockfile keyed to PAIR_INDICES so different groups never block

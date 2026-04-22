@@ -1,0 +1,367 @@
+From 576f8fc4e9468277cae15d2134d9db954d62bec7 Mon Sep 17 00:00:00 2001
+From: Build <patch@build>
+Date: Mon, 20 Apr 2026 23:25:03 +0000
+Subject: [PATCH] feat(cli): write real-time progress JSON for web UI
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Adds progress_writer.go (package main) which fans out every gotohp
+event to a structured JSON file (default /tmp/gotohp-progress.json,
+overridable via GOTOHP_PROGRESS_FILE).
+
+The file is written atomically (write-then-rename) after every event
+so readers never see a partial write.  It contains:
+
+  state          – "idle" | "running" | "complete" | "cancelled"
+  total_files    – file count from uploadStart
+  total_bytes    – byte total (updated async via uploadTotalBytes)
+  completed      – files finished successfully
+  failed         – files that errored
+  bytes_uploaded – running byte total (summed from ThreadStatus deltas)
+  speed_bytes_per_sec – rolling 30-second average
+  eta_seconds    – estimated time remaining
+  threads[]      – per-worker status, file, byte progress, attempt
+  recent_results[] – last 200 file outcomes (success/error/mediaKey)
+  album          – album progress / completion state
+
+The existing Bubble Tea terminal UI is unchanged; the writer runs in
+parallel via a fan-out in the event callback.
+---
+ cli.go             |   5 +
+ progress_writer.go | 266 +++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 271 insertions(+)
+ create mode 100644 progress_writer.go
+
+diff --git a/cli.go b/cli.go
+index 9d2bf89..07fc2c6 100644
+--- a/cli.go
++++ b/cli.go
+@@ -296,8 +296,41 @@ func runCLIUpload(filePaths []string, config cliConfig) error {
+ 	model := initialModel()
+ 	r, w, _ := os.Pipe(); if w != nil { w.Close() }; if r == nil { r = os.Stdin }; p := tea.NewProgram(model, tea.WithInput(r))
+ 
++	// Progress writer: writes structured JSON for the web UI on every event.
++	pw := newProgressWriter()
++	type progressEvent struct {
++		event string
++		data  any
++	}
++	// Buffer a burst of UI events without blocking the upload callback.
++	// 64 is enough to absorb short spikes while keeping memory bounded.
++	progressEvents := make(chan progressEvent, 64)
++	defer close(progressEvents)
++	go func() {
++		for pe := range progressEvents {
++			pw.handleEvent(pe.event, pe.data)
++		}
++	}()
++
+ 	// Create CLI app with event callback to bubbletea
+ 	eventCallback := func(event string, data any) {
++		// Fan-out to the progress file writer without inline JSON/disk I/O.
++		pe := progressEvent{event: event, data: data}
++		select {
++		case progressEvents <- pe:
++		default:
++			// Coalesce under backpressure: drop one queued event, then retry
++			// enqueuing the latest state so the file writer catches up quickly.
++			// This progress stream is best-effort and used for UI polling only.
++			select {
++			case <-progressEvents:
++			default:
++			}
++			select {
++			case progressEvents <- pe:
++			default:
++			}
++		}
+ 		switch event {
+ 		case "uploadStart":
+ 			if start, ok := data.(backend.UploadBatchStart); ok {
+diff --git a/progress_writer.go b/progress_writer.go
+new file mode 100644
+index 0000000..53fa687
+--- /dev/null
++++ b/progress_writer.go
+@@ -0,0 +1,278 @@
++package main
++
++import (
++	"encoding/json"
++	"math"
++	"os"
++	"path/filepath"
++	"sort"
++	"sync"
++	"time"
++
++	"app/backend"
++)
++
++const defaultProgressFile = "/tmp/gotohp-progress.json"
++
++// progressState is the JSON structure written to disk after every event.
++type progressState struct {
++	State         string       `json:"state"`              // "idle","running","complete","cancelled"
++	StartedAt     string       `json:"started_at"`         // RFC3339
++	EndedAt       string       `json:"ended_at"`           // RFC3339, empty while running
++	TotalFiles    int          `json:"total_files"`
++	TotalBytes    int64        `json:"total_bytes"`
++	Completed     int          `json:"completed"`
++	Failed        int          `json:"failed"`
++	BytesUploaded int64        `json:"bytes_uploaded"`
++	SpeedBytesPS  float64      `json:"speed_bytes_per_sec"`
++	ETASeconds    float64      `json:"eta_seconds"`
++	Threads       []psThread   `json:"threads"`
++	RecentResults []psResult   `json:"recent_results"` // capped at 200
++	Album         *psAlbum     `json:"album,omitempty"`
++	UpdatedAt     string       `json:"updated_at"`
++}
++
++type psThread struct {
++	WorkerID      int    `json:"worker_id"`
++	Status        string `json:"status"`
++	FileName      string `json:"file_name"`
++	FilePath      string `json:"file_path"`
++	BytesUploaded int64  `json:"bytes_uploaded"`
++	BytesTotal    int64  `json:"bytes_total"`
++	Attempt       int    `json:"attempt"`
++	Message       string `json:"message,omitempty"`
++}
++
++type psResult struct {
++	Path      string `json:"path"`
++	FileName  string `json:"file_name"`
++	Success   bool   `json:"success"`
++	MediaKey  string `json:"media_key,omitempty"`
++	Error     string `json:"error,omitempty"`
++	Timestamp string `json:"timestamp"`
++}
++
++type psAlbum struct {
++	Name       string   `json:"name"`
++	ItemsAdded int      `json:"items_added"`
++	TotalItems int      `json:"total_items"`
++	Complete   bool     `json:"complete"`
++	AlbumKeys  []string `json:"album_keys,omitempty"`
++	Error      string   `json:"error,omitempty"`
++}
++
++// speedSample is one data point for the rolling-window speed calculation.
++type speedSample struct {
++	t     time.Time
++	bytes int64
++}
++
++// progressWriter maintains in-memory upload state and flushes it atomically to
++// a JSON file after every event so the web UI can poll it.
++type progressWriter struct {
++	mu       sync.Mutex
++	filePath string
++	state    progressState
++	threads  map[int]*psThread
++	samples  []speedSample // rolling 30-second window
++}
++
++func newProgressWriter() *progressWriter {
++	filePath := os.Getenv("GOTOHP_PROGRESS_FILE")
++	if filePath == "" {
++		filePath = defaultProgressFile
++	}
++	pw := &progressWriter{
++		filePath: filePath,
++		threads:  make(map[int]*psThread),
++	}
++	pw.state.State = "idle"
++	pw.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
++	pw.flush()
++	return pw
++}
++
++// handleEvent is called for every gotohp event, in parallel with the Bubble Tea callback.
++func (pw *progressWriter) handleEvent(event string, data any) {
++	pw.mu.Lock()
++	defer pw.mu.Unlock()
++	now := time.Now()
++
++	switch event {
++	case "uploadStart":
++		if v, ok := data.(backend.UploadBatchStart); ok {
++			pw.state.State = "running"
++			pw.state.StartedAt = now.UTC().Format(time.RFC3339)
++			pw.state.EndedAt = ""
++			pw.state.TotalFiles = v.Total
++			pw.state.TotalBytes = v.TotalBytes
++			pw.state.Completed = 0
++			pw.state.Failed = 0
++			pw.state.BytesUploaded = 0
++			pw.state.SpeedBytesPS = 0
++			pw.state.ETASeconds = 0
++			pw.state.RecentResults = nil
++			pw.state.Album = nil
++			pw.threads = make(map[int]*psThread)
++			pw.samples = nil
++		}
++
++	case "uploadTotalBytes":
++		if v, ok := data.(int64); ok {
++			pw.state.TotalBytes = v
++		}
++
++	case "ThreadStatus":
++		if v, ok := data.(backend.ThreadStatus); ok {
++			ts := pw.threads[v.WorkerID]
++			if ts == nil {
++				ts = &psThread{}
++				pw.threads[v.WorkerID] = ts
++			}
++			prevBytes := ts.BytesUploaded
++			ts.WorkerID = v.WorkerID
++			ts.Status = v.Status
++			ts.FileName = v.FileName
++			ts.FilePath = v.FilePath
++			ts.Message = v.Message
++			ts.Attempt = v.Attempt
++			ts.BytesUploaded = v.BytesUploaded
++			ts.BytesTotal = v.BytesTotal
++
++			// Accumulate byte delta for global counter + speed
++			if v.BytesUploaded > prevBytes {
++				delta := v.BytesUploaded - prevBytes
++				pw.state.BytesUploaded += delta
++				pw.samples = append(pw.samples, speedSample{t: now, bytes: pw.state.BytesUploaded})
++
++				// Trim samples older than 30 s
++				cutoff := now.Add(-30 * time.Second)
++				i := sort.Search(len(pw.samples), func(i int) bool {
++					return !pw.samples[i].t.Before(cutoff)
++				})
++				pw.samples = pw.samples[i:]
++
++				// Rolling speed
++				if len(pw.samples) >= 2 {
++					first := pw.samples[0]
++					last := pw.samples[len(pw.samples)-1]
++					elapsed := last.t.Sub(first.t).Seconds()
++					if elapsed > 0 {
++						pw.state.SpeedBytesPS = float64(last.bytes-first.bytes) / elapsed
++					}
++				}
++
++				// ETA based on remaining bytes
++				if pw.state.TotalBytes > 0 && pw.state.SpeedBytesPS > 0 {
++					remaining := float64(pw.state.TotalBytes - pw.state.BytesUploaded)
++					pw.state.ETASeconds = math.Max(0, remaining/pw.state.SpeedBytesPS)
++				}
++			}
++		}
++
++	case "FileStatus":
++		if v, ok := data.(backend.FileUploadResult); ok {
++			r := psResult{
++				Path:      v.Path,
++				FileName:  filepath.Base(v.Path),
++				Success:   !v.IsError,
++				MediaKey:  v.MediaKey,
++				Timestamp: now.UTC().Format(time.RFC3339),
++			}
++			if v.IsError {
++				pw.state.Failed++
++				if v.Error != nil {
++					r.Error = v.Error.Error()
++				}
++			} else {
++				pw.state.Completed++
++			}
++			pw.state.RecentResults = append(pw.state.RecentResults, r)
++			if len(pw.state.RecentResults) > 200 {
++				pw.state.RecentResults = pw.state.RecentResults[len(pw.state.RecentResults)-200:]
++			}
++		}
++
++	case "uploadStop":
++		pw.state.State = "complete"
++		pw.state.EndedAt = now.UTC().Format(time.RFC3339)
++		pw.state.SpeedBytesPS = 0
++		pw.state.ETASeconds = 0
++
++	case "uploadCancel":
++		pw.state.State = "cancelled"
++		pw.state.EndedAt = now.UTC().Format(time.RFC3339)
++		pw.state.SpeedBytesPS = 0
++		pw.state.ETASeconds = 0
++
++	case "albumProgress":
++		if v, ok := data.(backend.AlbumStatus); ok {
++			if pw.state.Album == nil {
++				pw.state.Album = &psAlbum{}
++			}
++			pw.state.Album.Name = v.AlbumName
++			pw.state.Album.ItemsAdded = v.ItemsAdded
++			pw.state.Album.TotalItems = v.TotalItems
++			pw.state.Album.Complete = false
++		}
++
++	case "albumComplete":
++		if v, ok := data.(backend.AlbumStatus); ok {
++			if pw.state.Album == nil {
++				pw.state.Album = &psAlbum{}
++			}
++			pw.state.Album.Name = v.AlbumName
++			pw.state.Album.ItemsAdded = v.ItemsAdded
++			pw.state.Album.AlbumKeys = v.AlbumKeys
++			pw.state.Album.Complete = true
++		}
++
++	case "albumError":
++		if v, ok := data.(backend.AlbumError); ok {
++			if pw.state.Album == nil {
++				pw.state.Album = &psAlbum{}
++			}
++			pw.state.Album.Name = v.AlbumName
++			pw.state.Album.Error = v.Error
++		}
++	}
++
++	// Rebuild threads slice (sorted by worker ID for stable output)
++	ids := make([]int, 0, len(pw.threads))
++	for id := range pw.threads {
++		ids = append(ids, id)
++	}
++	sort.Ints(ids)
++	pw.state.Threads = make([]psThread, 0, len(ids))
++	for _, id := range ids {
++		pw.state.Threads = append(pw.state.Threads, *pw.threads[id])
++	}
++
++	pw.state.UpdatedAt = now.UTC().Format(time.RFC3339)
++	pw.flush()
++}
++
++// flush atomically writes state to disk. Must be called with pw.mu held.
++func (pw *progressWriter) flush() {
++	data, err := json.Marshal(&pw.state)
++	if err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to marshal progress state: " + err.Error() + "\n")
++		return
++	}
++	if err := os.MkdirAll(filepath.Dir(pw.filePath), 0755); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to create progress directory: " + err.Error() + "\n")
++		return
++	}
++	tmp := pw.filePath + ".tmp"
++	if err := os.WriteFile(tmp, data, 0600); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to write progress file: " + err.Error() + "\n")
++		return
++	}
++	if err := os.Rename(tmp, pw.filePath); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to rename progress file: " + err.Error() + "\n")
++		return
++	}
++	if err := os.Chmod(pw.filePath, 0600); err != nil {
++		_, _ = os.Stderr.WriteString("gotohp: failed to chmod progress file: " + err.Error() + "\n")
++	}
++}
+-- 
+2.53.0

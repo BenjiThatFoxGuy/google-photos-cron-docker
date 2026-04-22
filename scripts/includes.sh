@@ -23,38 +23,88 @@ function color() {
 }
 
 ########################################
-# Export variables from /.env file.
+# Export key=value variables from file using a prefix.
+# Arguments:
+#     file_path
+#     var_prefix
+########################################
+function export_prefixed_env_file() {
+    local file_path="$1"
+    local var_prefix="$2"
+    local line var_name value
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        # Trim leading whitespace
+        line="${line#"${line%%[![:space:]]*}"}"
+        # Trim trailing whitespace
+        line="${line%"${line##*[![:space:]]}"}"
+        # Skip empty lines and comments
+        [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
+        # Match VAR=VALUE where VAR is a valid shell variable name
+        if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+            var_name=${BASH_REMATCH[1]}
+            value=${BASH_REMATCH[2]}
+            # Export as-is (no shell evaluation), prefixed namespace
+            export "${var_prefix}${var_name}=${value}"
+        fi
+    done < "${file_path}"
+}
+
+########################################
+# Export variables from /.env and optional web UI overrides file.
 # Arguments:
 #     None
 ########################################
 function export_env_file() {
     if [[ -f "/.env" ]]; then
         color blue "Found /.env file, exporting variables"
-        local line var_name value
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            # Trim leading whitespace
-            line="${line#"${line%%[![:space:]]*}"}"
-            # Trim trailing whitespace
-            line="${line%"${line##*[![:space:]]}"}"
-            # Skip empty lines and comments
-            [[ -z "$line" || "${line:0:1}" == "#" ]] && continue
-            # Match VAR=VALUE where VAR is a valid shell variable name
-            if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
-                var_name=${BASH_REMATCH[1]}
-                value=${BASH_REMATCH[2]}
-                # Export as-is (no shell evaluation), prefixed with DOTENV_
-                export "DOTENV_${var_name}=${value}"
-            fi
-        done < "/.env"
+        export_prefixed_env_file "/.env" "DOTENV_"
+    fi
+
+    if [[ -n "${WEBUI_OVERRIDE_FILE:-}" && -f "${WEBUI_OVERRIDE_FILE}" ]]; then
+        local override_mode
+        # GNU stat (Linux/BusyBox) uses -c '%a'; BSD stat uses -f '%OLp'.
+        # If neither succeeds, treat the file as insecure and skip it.
+        override_mode="$(stat -c '%a' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null \
+            || stat -f '%OLp' "${WEBUI_OVERRIDE_FILE}" 2>/dev/null \
+            || true)"
+        # 022 == group-write (020) + world-write (002) bits.
+        # Empty mode (stat unavailable) is also treated as insecure.
+        if [[ -z "${override_mode}" ]] || (( (8#${override_mode} & 8#022) != 0 )); then
+            color yellow "Skipping insecure web UI override file (${WEBUI_OVERRIDE_FILE}): permissions ${override_mode:-unknown}"
+        else
+            color blue "Found web UI override file (${WEBUI_OVERRIDE_FILE}), exporting variables"
+            export_prefixed_env_file "${WEBUI_OVERRIDE_FILE}" "WEBUI_OVERRIDE_"
+        fi
     fi
 }
 
 ########################################
-# Get a variable value from:
-#     environment variables,
-#     secret file in environment variables (_FILE suffix),
-#     secret file in .env file,
-#     environment variables in .env file.
+# Read a secret/env file and normalize line endings.
+# Removes carriage returns and trailing newline characters.
+# Arguments:
+#     file path
+# Outputs:
+#     normalized file content (stdout)
+########################################
+function read_env_file_value() {
+    local file_path="$1"
+    local value
+    value="$(cat "${file_path}")"
+    value="${value//$'\r'/}"
+    while [[ "${value}" == *$'\n' ]]; do
+        value="${value%$'\n'}"
+    done
+    printf '%s' "${value}"
+}
+
+########################################
+# Get a variable value, resolving in the following precedence (highest first):
+#     web UI override variable (WEBUI_OVERRIDE_<VAR>, from override file),
+#     web UI override file-secret (WEBUI_OVERRIDE_<VAR>_FILE),
+#     environment variable (<VAR>),
+#     secret file in environment variables (<VAR>_FILE),
+#     secret file in .env file (DOTENV_<VAR>_FILE),
+#     value from .env file (DOTENV_<VAR>).
 # Arguments:
 #     variable name
 # Outputs:
@@ -63,22 +113,22 @@ function export_env_file() {
 function get_env() {
     local VAR="$1"
     local VAR_FILE="${VAR}_FILE"
+    local VAR_WEBUI_OVERRIDE="WEBUI_OVERRIDE_${VAR}"
+    local VAR_WEBUI_OVERRIDE_FILE="WEBUI_OVERRIDE_${VAR_FILE}"
     local VAR_DOTENV="DOTENV_${VAR}"
     local VAR_DOTENV_FILE="DOTENV_${VAR_FILE}"
     local VALUE=""
 
-    if [[ -n "${!VAR:-}" ]]; then
+    if [[ -n "${!VAR_WEBUI_OVERRIDE:-}" ]]; then
+        VALUE="${!VAR_WEBUI_OVERRIDE}"
+    elif [[ -n "${!VAR_WEBUI_OVERRIDE_FILE:-}" ]]; then
+        VALUE="$(read_env_file_value "${!VAR_WEBUI_OVERRIDE_FILE}")"
+    elif [[ -n "${!VAR:-}" ]]; then
         VALUE="${!VAR}"
     elif [[ -n "${!VAR_FILE:-}" ]]; then
-        VALUE="$(cat "${!VAR_FILE}")"
-        VALUE="${VALUE%$'\r\n'}"
-        VALUE="${VALUE%$'\n'}"
-        VALUE="${VALUE%$'\r'}"
+        VALUE="$(read_env_file_value "${!VAR_FILE}")"
     elif [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
-        VALUE="$(cat "${!VAR_DOTENV_FILE}")"
-        VALUE="${VALUE%$'\r\n'}"
-        VALUE="${VALUE%$'\n'}"
-        VALUE="${VALUE%$'\r'}"
+        VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
     elif [[ -n "${!VAR_DOTENV:-}" ]]; then
         VALUE="${!VAR_DOTENV}"
     fi
@@ -108,18 +158,33 @@ function get_source_album_list() {
     GOTOHP_EMAIL_LIST=()
     CRON_LIST=()
 
-    local i=0
+    # Discover all SOURCE_PATH_N indices present in the environment, including
+    # DOTENV_* (from /.env) and WEBUI_OVERRIDE_* prefixes used by get_env.
+    # Sorting numerically means non-contiguous indices (e.g. 0, 1, 5, 7) are
+    # all honoured without stopping at the first gap.
+    local -a _sp_indices=()
+    local _sp_idx
+    while IFS= read -r _sp_idx; do
+        _sp_indices+=("${_sp_idx}")
+    done < <(
+        compgen -v \
+        | grep -E '^(DOTENV_|WEBUI_OVERRIDE_)?SOURCE_PATH_[0-9]+(_FILE)?$' \
+        | grep -oE '[0-9]+' \
+        | sort -un
+    )
+
+    local i
     local SOURCE_PATH_X_REFER
     local ALBUM_NAME_X_REFER
 
-    while true; do
+    for i in "${_sp_indices[@]}"; do
         SOURCE_PATH_X_REFER="SOURCE_PATH_${i}"
         ALBUM_NAME_X_REFER="ALBUM_NAME_${i}"
         get_env "${SOURCE_PATH_X_REFER}"
         get_env "${ALBUM_NAME_X_REFER}"
 
         if [[ -z "${!SOURCE_PATH_X_REFER}" ]]; then
-            break
+            continue
         fi
 
         SOURCE_PATHS+=("${!SOURCE_PATH_X_REFER}")
@@ -159,7 +224,6 @@ function get_source_album_list() {
         GOTOHP_EMAIL_LIST+=("${!EMAIL_X}")
         CRON_LIST+=("${!CRON_X}")
 
-        ((i++))
     done
 }
 

@@ -19,6 +19,7 @@ easy to adopt if you are already familiar with that project.
 - Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
 - Credentials stored in a Docker volume — survive container restarts
 - Secrets can be supplied via files (`_FILE` suffix) or a `.env` file
+- Optional experimental web UI for status and runtime overrides
 - Tiny Alpine-based image, pure-Go binary (no webkit/GUI dependencies)
 
 ---
@@ -61,6 +62,27 @@ docker compose run --rm photos-backup backup
 | `TIMEZONE`      | `UTC`          | Container timezone (e.g. `America/New_York`) |
 | `CRON_OVERLAP`  | `queue`        | What to do when a schedule group fires while its previous run is still active (see [Schedule overlap modes](#schedule-overlap-modes)) |
 
+### Web UI (experimental)
+
+| Variable              | Default | Description |
+|-----------------------|---------|-------------|
+| `WEBUI_BIND`          | `127.0.0.1` when only `WEBUI_PORT` is set; `0.0.0.0` when auth env vars are also set | Interface/address for the web UI HTTP server |
+| `WEBUI_PORT`          | `5572`  | Port exposed by the web UI HTTP server |
+
+The web UI is automatically enabled if either `WEBUI_BIND` or `WEBUI_PORT` is specified. When only `WEBUI_PORT` is set and no auth variables (`WEBUI_AUTH`, `WEBUI_USERNAME`, `WEBUI_PASSWORD`, `WEBUI_TOKEN`) are configured, the UI binds to loopback (`127.0.0.1`) to avoid accidental remote exposure. Set `WEBUI_BIND=0.0.0.0` explicitly to expose it on all interfaces. When enabled, the UI serves:
+
+- Live backup status cards (state, timestamps, exit code, pair scope)
+- Registered cron entries
+- Manual "Run backup now" action with running PID visibility
+- Manual backup log tail view
+- A plain-text config editor (`VAR=VALUE` lines)
+
+Config edits are written to `/.env` only when that file already exists. This keeps file-backed deployments editable while avoiding creation of a new config file for environment-only deployments.
+
+> **Security note:** The prototype web UI does **not** include authentication.
+> Keep it on trusted networks only. Prefer binding to localhost (e.g.
+> `WEBUI_BIND=127.0.0.1`) and/or placing it behind a reverse proxy with auth.
+
 #### Per-pair schedule overrides
 
 Each source/album pair can run on its own schedule by setting `CRON_N`.
@@ -80,6 +102,7 @@ CRON_1: "*/30 * * * *"     # pair 1 (screenshots) on its own faster schedule
 ```
 
 This produces two cron groups:
+
 - `0 2 * * *` — pair 0 (and any other pairs without a `CRON_N`)
 - `*/30 * * * *` — pair 1
 
@@ -119,15 +142,15 @@ the indexed form.  Both styles may be combined.
 
 ### Upload options
 
-| Variable                   | Default | Description |
-|----------------------------|---------|-------------|
-| `GOTOHP_THREADS`           | `3`     | Concurrent upload threads |
-| `GOTOHP_RECURSIVE`         | `TRUE`  | Include sub-directories |
-| `GOTOHP_FORCE`             | `FALSE` | Re-upload even if file already exists in Google Photos |
-| `GOTOHP_DELETE`            | `FALSE` | Delete source file after successful upload |
-| `GOTOHP_DISABLE_FILTER`    | `FALSE` | Upload all file types, not just media |
-| `GOTOHP_DATE_FROM_FILENAME`| `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
-| `GOTOHP_LOG_LEVEL`         | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
+| Variable                    | Default | Description |
+|-----------------------------|---------|-------------|
+| `GOTOHP_THREADS`            | `3`     | Concurrent upload threads |
+| `GOTOHP_RECURSIVE`          | `TRUE`  | Include sub-directories |
+| `GOTOHP_FORCE`              | `FALSE` | Re-upload even if file already exists in Google Photos |
+| `GOTOHP_DELETE`             | `FALSE` | Delete source file after successful upload |
+| `GOTOHP_DISABLE_FILTER`     | `FALSE` | Upload all file types, not just media |
+| `GOTOHP_DATE_FROM_FILENAME` | `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
+| `GOTOHP_LOG_LEVEL`          | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
 
 ### Per-pair upload option overrides
 

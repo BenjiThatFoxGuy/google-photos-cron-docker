@@ -28,6 +28,50 @@ function configure_cron() {
 }
 
 ########################################
+# Start an optional, lightweight web UI for status and runtime overrides.
+# Auto-enables if WEBUI_BIND/WEBUI_PORT are configured via env or /.env.
+# The web UI is served by the gotohp binary ("gotohp serve" subcommand)
+# which embeds index.html at compile time and exposes /api/* endpoints.
+########################################
+function start_webui() {
+    # Resolve from environment and /.env first.
+    get_env WEBUI_BIND
+    get_env WEBUI_PORT
+    get_env WEBUI_AUTH
+    get_env WEBUI_USERNAME
+    get_env WEBUI_PASSWORD
+    get_env WEBUI_TOKEN
+
+    # Auto-detect if web UI should be enabled based on configured values.
+    if [[ -z "${WEBUI_BIND}" && -z "${WEBUI_PORT}" ]]; then
+        color blue "Web UI disabled: set WEBUI_BIND and/or WEBUI_PORT to enable"
+        return
+    fi
+
+    if [[ -z "${WEBUI_BIND}" ]]; then
+        # Default to loopback unless auth appears configured; this avoids
+        # accidentally exposing an unauthenticated UI when only WEBUI_PORT is set.
+        if [[ -n "${WEBUI_AUTH}" || -n "${WEBUI_USERNAME}" || -n "${WEBUI_PASSWORD}" || -n "${WEBUI_TOKEN}" ]]; then
+            WEBUI_BIND="0.0.0.0"
+        else
+            WEBUI_BIND="127.0.0.1"
+        fi
+    fi
+    WEBUI_PORT="${WEBUI_PORT:-5572}"
+
+    color blue "Starting web UI at http://${WEBUI_BIND}:${WEBUI_PORT}"
+    color yellow "Warning: web UI has no built-in authentication. Restrict access with WEBUI_BIND, firewall rules, or a reverse proxy."
+    gotohp serve --bind "${WEBUI_BIND}" --port "${WEBUI_PORT}" &
+    WEBUI_PID=$!
+    sleep 1
+    if ! kill -0 "${WEBUI_PID}" 2>/dev/null; then
+        color red "Web UI failed to start (bind ${WEBUI_BIND}:${WEBUI_PORT})"
+    else
+        color blue "Web UI started with PID ${WEBUI_PID}"
+    fi
+}
+
+########################################
 # Return 0 if the cron expression contains at least one interval-style
 # step field (*/N), meaning it fires "once every N" units rather than at
 # a fixed point in time (e.g. "*/10 * * * *" → true; "0 * * * *" → false).
@@ -97,6 +141,8 @@ if [[ "$1" == "backup" ]]; then
     bash /app/backup.sh
     exit $?
 fi
+
+start_webui
 
 # Interval-style crons (e.g. "*/10 * * * *") imply "once every N units", so
 # the first scheduled fire could be almost a full interval away.  Run an

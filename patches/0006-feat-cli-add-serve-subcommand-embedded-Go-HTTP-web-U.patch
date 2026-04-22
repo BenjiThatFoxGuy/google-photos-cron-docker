@@ -1,0 +1,542 @@
+From 3ec6466622e3678214ef5675b551dfd017162a05 Mon Sep 17 00:00:00 2001
+From: Dockerfile <build@dockerfile>
+Date: Tue, 21 Apr 2026 00:03:44 +0000
+Subject: [PATCH] =?UTF-8?q?feat(cli):=20add=20"serve"=20subcommand=20?=
+ =?UTF-8?q?=E2=80=94=20embedded=20Go=20HTTP=20web=20UI=20server?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ cli_shared.go   |  19 +++
+ webui_server.go | 444 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 463 insertions(+)
+ create mode 100644 webui_server.go
+
+diff --git a/cli_shared.go b/cli_shared.go
+index 28537ac..6550700 100644
+--- a/cli_shared.go
++++ b/cli_shared.go
+@@ -24,6 +24,7 @@ func isCLICommand(arg string) bool {
+ 		"credentials", "creds", // Support both full and short form
+ 		"help", "--help", "-h",
+ 		"version", "--version", "-v",
++		"serve",
+ 	}
+ 
+ 	return slices.Contains(supportedCommands, arg)
+@@ -150,6 +151,24 @@ func runCLI() {
+ 		printCLIHelp()
+ 	case "version", "--version", "-v":
+ 		fmt.Printf("gotohp v%s\n", getAppVersion())
++	case "serve":
++		bindAddr := ""
++		port := ""
++		for i := 2; i < len(os.Args); i++ {
++			switch os.Args[i] {
++			case "--bind", "-b":
++				if i+1 < len(os.Args) {
++					bindAddr = os.Args[i+1]
++					i++
++				}
++			case "--port", "-p":
++				if i+1 < len(os.Args) {
++					port = os.Args[i+1]
++					i++
++				}
++			}
++		}
++		runWebuiServer(bindAddr, port)
+ 	default:
+ 		fmt.Printf("Error: unknown command '%s'\n\n", command)
+ 		printCLIHelp()
+diff --git a/webui_server.go b/webui_server.go
+new file mode 100644
+index 0000000..30f107c
+--- /dev/null
++++ b/webui_server.go
+@@ -0,0 +1,482 @@
++//go:build cli
++
++package main
++
++import (
++	"bufio"
++	_ "embed"
++	"encoding/json"
++	"fmt"
++	"io"
++	"log"
++	"net"
++	"net/http"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"sort"
++	"strconv"
++	"strings"
++	"syscall"
++	"time"
++)
++
++//go:embed webui/index.html
++var indexHTML []byte
++
++// ── response types (match the JSON contract consumed by index.html) ───────────
++
++type statusResponse struct {
++	TimestampUTC  string          `json:"timestamp_utc"`
++	Backup        backupStatus    `json:"backup"`
++	Runtime       runtimeStatus   `json:"runtime"`
++	Progress      json.RawMessage `json:"progress"`
++	Cron          cronStatus      `json:"cron"`
++	ManualLogTail string          `json:"manual_backup_log_tail"`
++}
++
++type backupStatus struct {
++	State       string `json:"state"`
++	LastStart   string `json:"last_start"`
++	LastEnd     string `json:"last_end"`
++	ExitCode    string `json:"exit_code"`
++	PairIndices string `json:"pair_indices"`
++}
++
++type runtimeStatus struct {
++	Hostname            string `json:"hostname"`
++	ConfigFileExists    bool   `json:"config_file_exists"`
++	ManualBackupRunning bool   `json:"manual_backup_running"`
++	ManualBackupPID     string `json:"manual_backup_pid"`
++	ManualStartedAt     string `json:"manual_started_at"`
++}
++
++type cronStatus struct {
++	Entries []string `json:"entries"`
++}
++
++// ── server ────────────────────────────────────────────────────────────────────
++
++type webuiServer struct {
++	pidFile      string
++	logFile      string
++	statusFile   string
++	progressFile string
++	crontabsFile string
++	configFile   string
++	backupScript string
++}
++
++func newWebuiServer() *webuiServer {
++	home := os.Getenv("HOME")
++	if home == "" {
++		home = "/root"
++	}
++	return &webuiServer{
++		pidFile:      envOr("MANUAL_BACKUP_PID_FILE", "/tmp/webui-manual-backup.pid"),
++		logFile:      envOr("MANUAL_BACKUP_LOG_FILE", "/tmp/webui-manual-backup.log"),
++		statusFile:   envOr("BACKUP_STATUS_FILE", "/tmp/backup-status.env"),
++		progressFile: envOr("GOTOHP_PROGRESS_FILE", defaultProgressFile),
++		crontabsFile: filepath.Join(home, "crontabs"),
++		configFile:   "/.env",
++		backupScript: envOr("BACKUP_SCRIPT", "/app/backup.sh"),
++	}
++}
++
++func envOr(key, fallback string) string {
++	if v := os.Getenv(key); v != "" {
++		return v
++	}
++	return fallback
++}
++
++// runWebuiServer is the entry point for the "serve" subcommand.
++func runWebuiServer(bindAddr, port string) {
++	if bindAddr == "" {
++		bindAddr = envOr("WEBUI_BIND", "0.0.0.0")
++	}
++	if port == "" {
++		port = envOr("WEBUI_PORT", "5572")
++	}
++
++	srv := newWebuiServer()
++
++	mux := http.NewServeMux()
++	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/" && r.URL.Path != "/index.html" {
++			http.NotFound(w, r)
++			return
++		}
++		w.Header().Set("Content-Type", "text/html; charset=utf-8")
++		w.Header().Set("Cache-Control", "no-store")
++		w.Write(indexHTML)
++	})
++	mux.HandleFunc("/api/status", srv.handleStatus)
++	mux.HandleFunc("/api/run", srv.handleRun)
++	mux.HandleFunc("/api/cancel", srv.handleCancel)
++	mux.HandleFunc("/api/config", srv.handleConfig)
++
++	addr := net.JoinHostPort(bindAddr, port)
++	server := &http.Server{
++		Addr:              addr,
++		Handler:           mux,
++		ReadHeaderTimeout: 5 * time.Second,
++		ReadTimeout:       15 * time.Second,
++		WriteTimeout:      30 * time.Second,
++		IdleTimeout:       60 * time.Second,
++	}
++	log.Printf("webui: listening on http://%s", addr)
++	if err := server.ListenAndServe(); err != nil {
++		log.Fatalf("webui: %v", err)
++	}
++}
++
++// ── handlers ──────────────────────────────────────────────────────────────────
++
++func (s *webuiServer) handleStatus(w http.ResponseWriter, r *http.Request) {
++	if r.Method != http.MethodGet {
++		jsonError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
++		return
++	}
++
++	// Scheduler state (written by backup.sh)
++	vars := readEnvFile(s.statusFile)
++	state := vars["STATE"]
++	if state == "" {
++		state = "UNKNOWN"
++	}
++	pairs := vars["PAIR_INDICES"]
++	if pairs == "" {
++		pairs = "ALL"
++	}
++
++	// Cron entries
++	entries := readLines(s.crontabsFile)
++
++	// Manual backup PID
++	manualRunning := false
++	manualPID := ""
++	manualStartedAt := ""
++	if pidBytes, err := os.ReadFile(s.pidFile); err == nil {
++		pidStr := strings.TrimSpace(string(pidBytes))
++		if pid, err := strconv.Atoi(pidStr); err == nil {
++			if procRunning(pid) {
++				manualRunning = true
++				manualPID = pidStr
++				if fi, err := os.Stat(s.pidFile); err == nil {
++					manualStartedAt = fi.ModTime().UTC().Format(time.RFC3339)
++				}
++			} else {
++				os.Remove(s.pidFile)
++			}
++		}
++	}
++
++	// Live progress (written by progress_writer.go during upload runs)
++	progress := json.RawMessage(`{"state":"idle","total_files":0,"total_bytes":0,"completed":0,"failed":0,"bytes_uploaded":0,"speed_bytes_per_sec":0,"eta_seconds":0,"threads":[],"recent_results":[]}`)
++	if data, err := os.ReadFile(s.progressFile); err == nil && len(data) > 0 && json.Valid(data) {
++		progress = json.RawMessage(data)
++	}
++
++	// Log tail (ANSI already stripped by backup.sh redirecting via nohup)
++	logTail := logTailLines(s.logFile, 80)
++
++	_, cfgErr := os.Stat(s.configFile)
++	hostname, _ := os.Hostname()
++
++	resp := statusResponse{
++		TimestampUTC: time.Now().UTC().Format(time.RFC3339),
++		Backup: backupStatus{
++			State:       state,
++			LastStart:   vars["LAST_START"],
++			LastEnd:     vars["LAST_END"],
++			ExitCode:    vars["EXIT_CODE"],
++			PairIndices: pairs,
++		},
++		Runtime: runtimeStatus{
++			Hostname:            hostname,
++			ConfigFileExists:    cfgErr == nil,
++			ManualBackupRunning: manualRunning,
++			ManualBackupPID:     manualPID,
++			ManualStartedAt:     manualStartedAt,
++		},
++		Progress:      progress,
++		Cron:          cronStatus{Entries: entries},
++		ManualLogTail: logTail,
++	}
++
++	w.Header().Set("Content-Type", "application/json")
++	w.Header().Set("Cache-Control", "no-store")
++	json.NewEncoder(w).Encode(resp)
++}
++
++func (s *webuiServer) handleRun(w http.ResponseWriter, r *http.Request) {
++	if r.Method != http.MethodPost {
++		jsonError(w, "POST required", http.StatusMethodNotAllowed)
++		return
++	}
++
++	// Guard against concurrent runs.
++	if pidBytes, err := os.ReadFile(s.pidFile); err == nil {
++		if pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes))); err == nil && procRunning(pid) {
++			jsonReply(w, http.StatusConflict, "error", fmt.Sprintf("backup already running (PID %d)", pid), 0)
++			return
++		}
++	}
++
++	if err := os.MkdirAll(filepath.Dir(s.logFile), 0755); err != nil {
++		jsonError(w, "failed to prepare log directory", http.StatusInternalServerError)
++		return
++	}
++	if err := os.MkdirAll(filepath.Dir(s.pidFile), 0755); err != nil {
++		jsonError(w, "failed to prepare pid directory", http.StatusInternalServerError)
++		return
++	}
++
++	logF, err := os.Create(s.logFile)
++	if err != nil {
++		jsonError(w, "failed to create log file", http.StatusInternalServerError)
++		return
++	}
++
++	cmd := exec.Command(s.backupScript)
++	cmd.Stdout = logF
++	cmd.Stderr = logF
++	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
++
++	if err := cmd.Start(); err != nil {
++		logF.Close()
++		jsonError(w, "failed to start backup: "+err.Error(), http.StatusInternalServerError)
++		return
++	}
++
++	pid := cmd.Process.Pid
++	if err := os.WriteFile(s.pidFile, []byte(strconv.Itoa(pid)), 0600); err != nil {
++		if killErr := syscall.Kill(-pid, syscall.SIGTERM); killErr != nil {
++			_ = syscall.Kill(pid, syscall.SIGTERM)
++		}
++		logF.Close()
++		_ = os.Remove(s.logFile)
++		jsonError(w, "failed to write pid file; backup process terminated", http.StatusInternalServerError)
++		return
++	}
++
++	// Reap the child and clean up the PID file when it exits.
++	go func() {
++		cmd.Wait()
++		logF.Close()
++		if b, err := os.ReadFile(s.pidFile); err == nil {
++			if strings.TrimSpace(string(b)) == strconv.Itoa(pid) {
++				os.Remove(s.pidFile)
++			}
++		}
++	}()
++
++	jsonReply(w, http.StatusOK, "ok", "backup started", pid)
++}
++
++func (s *webuiServer) handleCancel(w http.ResponseWriter, r *http.Request) {
++	if r.Method != http.MethodPost {
++		jsonError(w, "POST required", http.StatusMethodNotAllowed)
++		return
++	}
++
++	pidBytes, err := os.ReadFile(s.pidFile)
++	if err != nil {
++		jsonReply(w, http.StatusNotFound, "error", "no backup running", 0)
++		return
++	}
++	pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
++	if err != nil || !procRunning(pid) {
++		os.Remove(s.pidFile)
++		jsonReply(w, http.StatusNotFound, "error", "no backup running", 0)
++		return
++	}
++
++	// Kill the entire process group (backup.sh + child gotohp processes).
++	if err := syscall.Kill(-pid, syscall.SIGTERM); err != nil {
++		_ = syscall.Kill(pid, syscall.SIGTERM)
++	}
++	// Keep the PID file in place — the reaper goroutine started by handleRun
++	// will remove it once the process exits, preventing a new run during shutdown.
++
++	jsonReply(w, http.StatusOK, "ok", "cancel signal sent", 0)
++}
++
++func (s *webuiServer) handleConfig(w http.ResponseWriter, r *http.Request) {
++	switch r.Method {
++	case http.MethodGet:
++		data, err := os.ReadFile(s.configFile)
++		if err != nil {
++			data = []byte(renderConfigFromEnvironment())
++		}
++		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
++		w.Write(data)
++
++	case http.MethodPost:
++		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
++		if err != nil {
++			http.Error(w, "failed to read body", http.StatusBadRequest)
++			return
++		}
++		// Validate KEY=VALUE format.
++		for _, line := range strings.Split(string(body), "\n") {
++			line = strings.TrimSpace(line)
++			if line == "" || strings.HasPrefix(line, "#") {
++				continue
++			}
++			if !strings.Contains(line, "=") {
++				http.Error(w, "invalid line (missing =): "+line, http.StatusBadRequest)
++				return
++			}
++		}
++		if _, err := os.Stat(s.configFile); os.IsNotExist(err) {
++			http.Error(w, "config file /.env does not exist; changes were not saved", http.StatusConflict)
++			return
++		}
++		tmpFile := s.configFile + ".tmp"
++		if err := os.WriteFile(tmpFile, body, 0600); err != nil {
++			http.Error(w, "failed to write config", http.StatusInternalServerError)
++			return
++		}
++		if err := os.Rename(tmpFile, s.configFile); err != nil {
++			_ = os.Remove(tmpFile)
++			http.Error(w, "failed to write config", http.StatusInternalServerError)
++			return
++		}
++		if err := os.Chmod(s.configFile, 0600); err != nil {
++			http.Error(w, "failed to secure config file", http.StatusInternalServerError)
++			return
++		}
++		w.Write([]byte("Config saved to /.env"))
++
++	default:
++		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
++	}
++}
++
++// ── helpers ───────────────────────────────────────────────────────────────────
++
++func jsonError(w http.ResponseWriter, msg string, code int) {
++	w.Header().Set("Content-Type", "application/json")
++	w.WriteHeader(code)
++	json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": msg})
++}
++
++func jsonReply(w http.ResponseWriter, code int, status, message string, pid int) {
++	w.Header().Set("Content-Type", "application/json")
++	w.WriteHeader(code)
++	m := map[string]any{"status": status, "message": message}
++	if pid != 0 {
++		m["pid"] = pid
++	}
++	json.NewEncoder(w).Encode(m)
++}
++
++func procRunning(pid int) bool {
++	p, err := os.FindProcess(pid)
++	if err != nil {
++		return false
++	}
++	return p.Signal(syscall.Signal(0)) == nil
++}
++
++func readEnvFile(path string) map[string]string {
++	result := make(map[string]string)
++	f, err := os.Open(path)
++	if err != nil {
++		return result
++	}
++	defer f.Close()
++	sc := bufio.NewScanner(f)
++	for sc.Scan() {
++		line := sc.Text()
++		if idx := strings.IndexByte(line, '='); idx > 0 {
++			result[line[:idx]] = line[idx+1:]
++		}
++	}
++	return result
++}
++
++func readLines(path string) []string {
++	f, err := os.Open(path)
++	if err != nil {
++		return nil
++	}
++	defer f.Close()
++	var lines []string
++	sc := bufio.NewScanner(f)
++	for sc.Scan() {
++		if line := sc.Text(); line != "" {
++			lines = append(lines, line)
++		}
++	}
++	return lines
++}
++
++func logTailLines(path string, n int) string {
++	data, err := os.ReadFile(path)
++	if err != nil {
++		return ""
++	}
++	lines := strings.Split(string(data), "\n")
++	if len(lines) > n {
++		lines = lines[len(lines)-n:]
++	}
++	return strings.Join(lines, "\n")
++}
++
++func renderConfigFromEnvironment() string {
++	keys := make([]string, 0, 64)
++	values := make(map[string]string, 64)
++
++	for _, entry := range os.Environ() {
++		k, v, ok := strings.Cut(entry, "=")
++		if !ok {
++			continue
++		}
++		if !isConfigKeyForEditor(k) {
++			continue
++		}
++		if strings.TrimSpace(v) == "" {
++			continue
++		}
++		keys = append(keys, k)
++		values[k] = v
++	}
++
++	sort.Strings(keys)
++
++	var b strings.Builder
++	b.WriteString("# Generated from current environment (/.env not found)\n")
++	for _, k := range keys {
++		b.WriteString(k)
++		b.WriteByte('=')
++		b.WriteString(values[k])
++		b.WriteByte('\n')
++	}
++	return b.String()
++}
++
++func isConfigKeyForEditor(key string) bool {
++	switch key {
++	case "CRON", "CRON_OVERLAP", "TIMEZONE", "SOURCE_PATH", "ALBUM_NAME",
++		"GOTOHP_THREADS", "GOTOHP_RECURSIVE", "GOTOHP_FORCE", "GOTOHP_DELETE",
++		"GOTOHP_DISABLE_FILTER", "GOTOHP_DATE_FROM_FILENAME", "GOTOHP_LOG_LEVEL",
++		"GOTOHP_CREDS", "GOTOHP_EMAIL":
++		return true
++	}
++
++	for _, prefix := range []string{
++		"SOURCE_PATH_", "ALBUM_NAME_", "CRON_",
++		"GOTOHP_THREADS_", "GOTOHP_RECURSIVE_", "GOTOHP_FORCE_", "GOTOHP_DELETE_",
++		"GOTOHP_DISABLE_FILTER_", "GOTOHP_DATE_FROM_FILENAME_", "GOTOHP_LOG_LEVEL_",
++		"GOTOHP_CREDS_", "GOTOHP_EMAIL_",
++	} {
++		if strings.HasPrefix(key, prefix) {
++			return true
++		}
++	}
++
++	return false
++}
+-- 
+2.53.0
