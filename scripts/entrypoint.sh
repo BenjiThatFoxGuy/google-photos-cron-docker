@@ -28,6 +28,35 @@ function configure_cron() {
 }
 
 ########################################
+# Ensure /.env is readable/writable by the container process when present.
+# This helps the web UI config editor avoid falling back to env-generated
+# content due to permission-only failures on bind-mounted files.
+########################################
+function ensure_dotenv_permissions() {
+    if [[ ! -e "/.env" ]]; then
+        return
+    fi
+
+    if [[ -d "/.env" ]]; then
+        color yellow "Found /.env but it is a directory; expected a regular file"
+        return
+    fi
+
+    if [[ ! -r "/.env" || ! -w "/.env" ]]; then
+        color yellow "Adjusting /.env permissions for runtime config access"
+        if chmod 600 "/.env" 2>/dev/null; then
+            color blue "Updated /.env permissions to 600"
+        else
+            color yellow "Could not chmod /.env (likely read-only bind mount); web UI save may fail"
+        fi
+    fi
+
+    if [[ ! -r "/.env" ]]; then
+        color yellow "Warning: /.env is still not readable by this container process"
+    fi
+}
+
+########################################
 # Start an optional, lightweight web UI for status and runtime overrides.
 # Auto-enables if WEBUI_BIND/WEBUI_PORT are configured via env or /.env.
 # The web UI is served by the gotohp binary ("gotohp serve" subcommand)
@@ -129,6 +158,7 @@ function setup_credentials() {
     fi
 }
 
+ensure_dotenv_permissions
 init_env
 build_schedule_groups
 configure_timezone
