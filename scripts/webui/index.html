@@ -466,7 +466,7 @@
       <h2>Runtime Config Editor</h2>
       <div class="panel">
         <p style="color:var(--muted);margin:0 0 0.75rem;font-size:0.85rem">
-          KEY=VALUE pairs. If <code>/.env</code> exists, changes persist there; otherwise they are session-only.
+          KEY=VALUE pairs. You can explicitly switch to <code>/.env</code> mode when that file is mounted.
           Config source: <strong id="cfg-source">—</strong>
         </p>
 
@@ -480,6 +480,7 @@
         <div class="btn-row">
           <button class="btn" id="btn-load-cfg">&#8635; Load</button>
           <button class="btn primary" id="btn-save-cfg">&#10003; Save</button>
+          <button class="btn warn" id="btn-switch-dotenv">Use /.env Source</button>
         </div>
 
         <div class="cfg-builder">
@@ -953,7 +954,19 @@ function applyStatus(d) {
   document.getElementById('pair-scope').textContent = safe(bk.pair_indices, 'ALL');
 
   // ── Config source ─────────────────────────────────────────────────────────
-  document.getElementById('cfg-source').textContent = rt.config_file_exists ? '/.env (file)' : 'environment only';
+  const cfgRequested = safe(rt.config_source_requested, 'ENV');
+  const cfgEffective = safe(rt.config_source_effective, cfgRequested);
+  const cfgExists = !!rt.config_file_exists;
+  let cfgText = `${cfgEffective}`;
+  if (cfgRequested !== cfgEffective) {
+    cfgText += ` (requested ${cfgRequested})`;
+  }
+  if (cfgEffective === 'DOTENV' && cfgExists) {
+    cfgText += ' - /.env takes precedence when non-empty';
+  } else if (!cfgExists) {
+    cfgText += ' - /.env missing';
+  }
+  document.getElementById('cfg-source').textContent = cfgText;
 
   // ── Log ───────────────────────────────────────────────────────────────────
   document.getElementById('log-output').textContent = cleanLogText(safe(d.manual_backup_log_tail, 'No manual backup log yet.'));
@@ -982,6 +995,26 @@ async function saveConfig() {
   });
   document.getElementById('cfg-result').textContent = await res.text();
   refreshStatus().catch(() => {});
+}
+
+async function switchToDotenvSource() {
+  document.getElementById('cfg-result').textContent = 'Switching config source to DOTENV...';
+  const res = await fetch('/api/config-source', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ mode: 'DOTENV' })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = body.message || `Failed to switch source (HTTP ${res.status})`;
+    document.getElementById('cfg-result').textContent = msg;
+    toast(msg);
+    return;
+  }
+  const msg = body.message || 'Config source switched to DOTENV.';
+  document.getElementById('cfg-result').textContent = msg;
+  toast(msg);
+  await Promise.allSettled([refreshStatus(), loadConfig()]);
 }
 
 async function runNow() {
@@ -1014,6 +1047,9 @@ document.getElementById('btn-load-cfg').addEventListener('click', () => {
 });
 document.getElementById('btn-save-cfg').addEventListener('click', () => {
   saveConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
+});
+document.getElementById('btn-switch-dotenv').addEventListener('click', () => {
+  switchToDotenvSource().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
 });
 document.getElementById('btn-add-pair').addEventListener('click', () => {
   const maxIdx = cfgState.pairs.reduce((m, p) => Math.max(m, p._origIdx !== undefined ? p._origIdx : -1), -1);

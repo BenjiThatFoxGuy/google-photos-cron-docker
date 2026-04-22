@@ -104,6 +104,8 @@ index 0000000..30f107c
 +type runtimeStatus struct {
 +	Hostname            string `json:"hostname"`
 +	ConfigFileExists    bool   `json:"config_file_exists"`
++	ConfigSourceRequested string `json:"config_source_requested"`
++	ConfigSourceEffective string `json:"config_source_effective"`
 +	ManualBackupRunning bool   `json:"manual_backup_running"`
 +	ManualBackupPID     string `json:"manual_backup_pid"`
 +	ManualStartedAt     string `json:"manual_started_at"`
@@ -122,6 +124,7 @@ index 0000000..30f107c
 +	progressFile string
 +	crontabsFile string
 +	configFile   string
++	configSourceFile string
 +	backupScript string
 +}
 +
@@ -137,6 +140,7 @@ index 0000000..30f107c
 +		progressFile: envOr("GOTOHP_PROGRESS_FILE", defaultProgressFile),
 +		crontabsFile: filepath.Join(home, "crontabs"),
 +		configFile:   "/.env",
++		configSourceFile: envOr("WEBUI_CONFIG_SOURCE_FILE", "/tmp/webui-config-source.env"),
 +		backupScript: envOr("BACKUP_SCRIPT", "/app/backup.sh"),
 +	}
 +}
@@ -173,6 +177,7 @@ index 0000000..30f107c
 +	mux.HandleFunc("/api/run", srv.handleRun)
 +	mux.HandleFunc("/api/cancel", srv.handleCancel)
 +	mux.HandleFunc("/api/config", srv.handleConfig)
++	mux.HandleFunc("/api/config-source", srv.handleConfigSource)
 +
 +	addr := net.JoinHostPort(bindAddr, port)
 +	server := &http.Server{
@@ -240,6 +245,8 @@ index 0000000..30f107c
 +	logTail := logTailLines(s.logFile, 80)
 +
 +	_, cfgErr := os.Stat(s.configFile)
++	cfgExists := cfgErr == nil
++	configSourceRequested, configSourceEffective := s.resolveConfigSourceMode(cfgExists)
 +	hostname, _ := os.Hostname()
 +
 +	resp := statusResponse{
@@ -253,7 +260,9 @@ index 0000000..30f107c
 +		},
 +		Runtime: runtimeStatus{
 +			Hostname:            hostname,
-+			ConfigFileExists:    cfgErr == nil,
++			ConfigFileExists:    cfgExists,
++			ConfigSourceRequested: configSourceRequested,
++			ConfigSourceEffective: configSourceEffective,
 +			ManualBackupRunning: manualRunning,
 +			ManualBackupPID:     manualPID,
 +			ManualStartedAt:     manualStartedAt,
@@ -412,6 +421,48 @@ index 0000000..30f107c
 +		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 +	}
 +}
+
+func (s *webuiServer) handleConfigSource(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		_, cfgErr := os.Stat(s.configFile)
+		cfgExists := cfgErr == nil
+		requested, effective := s.resolveConfigSourceMode(cfgExists)
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok",
+			"requested": requested,
+			"effective": effective,
+			"config_file_exists": cfgExists,
+		})
+
+	case http.MethodPost:
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+			jsonError(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		mode := normalizeSourceMode(req.Mode)
+		if mode == "DOTENV" {
+			if _, err := os.Stat(s.configFile); err != nil {
+				jsonError(w, "cannot switch to DOTENV: /.env is missing; mount it first", http.StatusConflict)
+				return
+			}
+		}
+		if err := s.writeConfigSourceMode(mode); err != nil {
+			jsonError(w, "failed to save config source mode", http.StatusInternalServerError)
+			return
+		}
+		_, cfgErr := os.Stat(s.configFile)
+		cfgExists := cfgErr == nil
+		requested, effective := s.resolveConfigSourceMode(cfgExists)
+		jsonReply(w, http.StatusOK, "ok", fmt.Sprintf("config source set to %s (effective: %s)", requested, effective), 0)
+
+	default:
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+	}
+}
 +
 +// ── helpers ───────────────────────────────────────────────────────────────────
 +
@@ -483,6 +534,43 @@ index 0000000..30f107c
 +	}
 +	return strings.Join(lines, "\n")
 +}
+
+func normalizeSourceMode(mode string) string {
+	if strings.EqualFold(strings.TrimSpace(mode), "DOTENV") {
+		return "DOTENV"
+	}
+	return "ENV"
+}
+
+func (s *webuiServer) resolveConfigSourceMode(configFileExists bool) (string, string) {
+	requested := normalizeSourceMode(envOr("WEBUI_CONFIG_SOURCE", "ENV"))
+	if vars := readEnvFile(s.configSourceFile); vars != nil {
+		if mode, ok := vars["MODE"]; ok {
+			requested = normalizeSourceMode(mode)
+		}
+	}
+	effective := requested
+	if effective == "DOTENV" && !configFileExists {
+		effective = "ENV"
+	}
+	return requested, effective
+}
+
+func (s *webuiServer) writeConfigSourceMode(mode string) error {
+	mode = normalizeSourceMode(mode)
+	if err := os.MkdirAll(filepath.Dir(s.configSourceFile), 0755); err != nil {
+		return err
+	}
+	tmpFile := s.configSourceFile + ".tmp"
+	if err := os.WriteFile(tmpFile, []byte("MODE="+mode+"\n"), 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpFile, s.configSourceFile); err != nil {
+		_ = os.Remove(tmpFile)
+		return err
+	}
+	return os.Chmod(s.configSourceFile, 0600)
+}
 +
 +func renderConfigFromEnvironment() string {
 +	keys := make([]string, 0, 64)
