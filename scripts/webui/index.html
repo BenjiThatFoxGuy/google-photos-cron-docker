@@ -209,6 +209,38 @@
       padding: 0.75rem;
       margin: 0.5rem 0 0.75rem;
     }
+    .cfg-base-grid {
+      display: grid;
+      gap: 0.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    }
+    .cfg-base-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .cfg-base-field label {
+      color: #bfdbfe;
+      font-size: 0.72rem;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+    .cfg-base-field input,
+    .cfg-base-field select {
+      width: 100%;
+      background: #0b121b;
+      color: var(--text);
+      border: 1px solid #31455f;
+      border-radius: 7px;
+      font-size: 0.82rem;
+      padding: 0.45rem 0.5rem;
+    }
+    .cfg-base-field input:focus,
+    .cfg-base-field select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
     .cfg-builder-head {
       display: flex;
       align-items: center;
@@ -252,7 +284,8 @@
       gap: 0.45rem;
       grid-template-columns: 1.4fr 1fr 0.8fr;
     }
-    .cfg-row input {
+    .cfg-row input,
+    .cfg-row select {
       width: 100%;
       background: #0b121b;
       color: var(--text);
@@ -261,7 +294,8 @@
       font-size: 0.82rem;
       padding: 0.45rem 0.5rem;
     }
-    .cfg-row input:focus {
+    .cfg-row input:focus,
+    .cfg-row select:focus {
       outline: none;
       border-color: var(--accent);
     }
@@ -485,6 +519,13 @@
 
         <div class="cfg-builder">
           <div class="cfg-builder-head">
+            <div class="cfg-builder-title">Global Controls</div>
+          </div>
+          <div id="cfg-base-controls" class="cfg-base-grid"></div>
+        </div>
+
+        <div class="cfg-builder">
+          <div class="cfg-builder-head">
             <div class="cfg-builder-title">Pair Builder</div>
             <button class="btn" id="btn-add-pair">+ Add Pair</button>
           </div>
@@ -664,6 +705,7 @@ function esc(s) {
 let lastStatus = null;
 const cfgKnownBaseKeys = [
   'CRON', 'CRON_OVERLAP', 'TIMEZONE',
+  'WEBUI_BIND', 'WEBUI_PORT', 'WEBUI_AUTH', 'WEBUI_USERNAME', 'WEBUI_PASSWORD', 'WEBUI_TOKEN',
   'GOTOHP_THREADS', 'GOTOHP_RECURSIVE', 'GOTOHP_FORCE', 'GOTOHP_DELETE',
   'GOTOHP_DISABLE_FILTER', 'GOTOHP_DATE_FROM_FILENAME', 'GOTOHP_LOG_LEVEL',
   'GOTOHP_CREDS', 'GOTOHP_EMAIL', 'SOURCE_PATH', 'ALBUM_NAME'
@@ -675,6 +717,69 @@ const cfgPairPrefixes = [
   'GOTOHP_CREDS_', 'GOTOHP_EMAIL_'
 ];
 let cfgState = { base: {}, extra: {}, pairs: [] };
+
+const cfgBaseFieldDefs = [
+  { key: 'CRON', label: 'Global CRON', placeholder: '0 2 * * *' },
+  { key: 'CRON_OVERLAP', label: 'CRON_OVERLAP', type: 'select', options: [['', '(default: queue)'], ['QUEUE', 'QUEUE'], ['MULTITHREAD', 'MULTITHREAD'], ['SKIP', 'SKIP']] },
+  { key: 'TIMEZONE', label: 'TIMEZONE', placeholder: 'UTC or America/New_York' },
+  { key: 'WEBUI_BIND', label: 'WEBUI_BIND', placeholder: '127.0.0.1 or 0.0.0.0' },
+  { key: 'WEBUI_PORT', label: 'WEBUI_PORT', placeholder: '5572' },
+  { key: 'WEBUI_AUTH', label: 'WEBUI_AUTH', placeholder: 'auth mode (if used)' },
+  { key: 'WEBUI_USERNAME', label: 'WEBUI_USERNAME', placeholder: 'web UI username' },
+  { key: 'WEBUI_PASSWORD', label: 'WEBUI_PASSWORD', placeholder: 'web UI password/token secret' },
+  { key: 'WEBUI_TOKEN', label: 'WEBUI_TOKEN', placeholder: 'web UI bearer token' },
+  { key: 'GOTOHP_THREADS', label: 'GOTOHP_THREADS', placeholder: '3' },
+  { key: 'GOTOHP_LOG_LEVEL', label: 'GOTOHP_LOG_LEVEL', type: 'select', options: [['', '(default: info)'], ['debug', 'debug'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']] },
+  { key: 'GOTOHP_RECURSIVE', label: 'GOTOHP_RECURSIVE', type: 'select', options: [['', '(default: TRUE)'], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']] },
+  { key: 'GOTOHP_FORCE', label: 'GOTOHP_FORCE', type: 'select', options: [['', '(default: FALSE)'], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']] },
+  { key: 'GOTOHP_DELETE', label: 'GOTOHP_DELETE', type: 'select', options: [['', '(default: FALSE)'], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']] },
+  { key: 'GOTOHP_DISABLE_FILTER', label: 'GOTOHP_DISABLE_FILTER', type: 'select', options: [['', '(default: FALSE)'], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']] },
+  { key: 'GOTOHP_DATE_FROM_FILENAME', label: 'GOTOHP_DATE_FROM_FILENAME', type: 'select', options: [['', '(default: FALSE)'], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']] },
+  { key: 'GOTOHP_EMAIL', label: 'GOTOHP_EMAIL', placeholder: 'active account email' },
+  { key: 'GOTOHP_CREDS', label: 'GOTOHP_CREDS', placeholder: 'androidId=...' },
+  { key: 'SOURCE_PATH', label: 'SOURCE_PATH (alias 0)', placeholder: '/photos' },
+  { key: 'ALBUM_NAME', label: 'ALBUM_NAME (alias 0)', placeholder: 'My Backup' }
+];
+
+function renderSelectOptions(current, options) {
+  return options.map(([value, label]) => {
+    const selected = String(current || '') === String(value) ? ' selected' : '';
+    return `<option value="${esc(value)}"${selected}>${esc(label)}</option>`;
+  }).join('');
+}
+
+function renderBaseControls() {
+  const root = document.getElementById('cfg-base-controls');
+  root.innerHTML = cfgBaseFieldDefs.map(def => {
+    const value = cfgState.base[def.key] || '';
+    if (def.type === 'select') {
+      return `<div class="cfg-base-field">
+        <label for="cfg-base-${def.key}">${esc(def.label)}</label>
+        <select id="cfg-base-${def.key}" data-base-key="${esc(def.key)}">
+          ${renderSelectOptions(value, def.options || [])}
+        </select>
+      </div>`;
+    }
+    return `<div class="cfg-base-field">
+      <label for="cfg-base-${def.key}">${esc(def.label)}</label>
+      <input id="cfg-base-${def.key}" data-base-key="${esc(def.key)}" value="${esc(value)}" placeholder="${esc(def.placeholder || '')}">
+    </div>`;
+  }).join('');
+
+  root.querySelectorAll('[data-base-key]').forEach(control => {
+    const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
+    control.addEventListener(eventName, e => {
+      const key = e.target.dataset.baseKey;
+      const value = e.target.value;
+      if (value === '') {
+        delete cfgState.base[key];
+      } else {
+        cfgState.base[key] = value;
+      }
+      document.getElementById('cfg-editor').value = buildConfigTextFromState();
+    });
+  });
+}
 
 function parseConfigText(text) {
   const pairsByIndex = new Map();
@@ -795,12 +900,40 @@ function renderPairBuilder() {
         <input data-field="album_name" data-idx="${arrayIdx}" placeholder="ALBUM_NAME_${origIdx} (optional)" value="${esc(pair.album_name || '')}">
         <input data-field="cron" data-idx="${arrayIdx}" placeholder="CRON_${origIdx} (optional)" value="${esc(pair.cron || '')}">
       </div>
+      <div class="cfg-row" style="margin-top:0.45rem">
+        <input data-field="gotohp_threads" data-idx="${arrayIdx}" placeholder="GOTOHP_THREADS_${origIdx}" value="${esc(pair.gotohp_threads || '')}">
+        <select data-field="gotohp_log_level" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_log_level || '', [['', 'GOTOHP_LOG_LEVEL_' + origIdx], ['debug', 'debug'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']])}
+        </select>
+        <select data-field="gotohp_recursive" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_recursive || '', [['', 'GOTOHP_RECURSIVE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
+        </select>
+      </div>
+      <div class="cfg-row" style="margin-top:0.45rem">
+        <select data-field="gotohp_force" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_force || '', [['', 'GOTOHP_FORCE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
+        </select>
+        <select data-field="gotohp_delete" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_delete || '', [['', 'GOTOHP_DELETE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
+        </select>
+        <select data-field="gotohp_disable_filter" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_disable_filter || '', [['', 'GOTOHP_DISABLE_FILTER_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
+        </select>
+      </div>
+      <div class="cfg-row" style="margin-top:0.45rem">
+        <select data-field="gotohp_date_from_filename" data-idx="${arrayIdx}">
+          ${renderSelectOptions(pair.gotohp_date_from_filename || '', [['', 'GOTOHP_DATE_FROM_FILENAME_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
+        </select>
+        <input data-field="gotohp_email" data-idx="${arrayIdx}" placeholder="GOTOHP_EMAIL_${origIdx} (optional)" value="${esc(pair.gotohp_email || '')}">
+        <input data-field="gotohp_creds" data-idx="${arrayIdx}" placeholder="GOTOHP_CREDS_${origIdx} (optional)" value="${esc(pair.gotohp_creds || '')}">
+      </div>
     </div>
   `;
   }).join('');
 
-  root.querySelectorAll('input[data-field]').forEach(input => {
-    input.addEventListener('input', e => {
+  root.querySelectorAll('[data-field]').forEach(control => {
+    const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
+    control.addEventListener(eventName, e => {
       const idx = Number(e.target.dataset.idx);
       const field = e.target.dataset.field;
       cfgState.pairs[idx][field] = e.target.value;
@@ -823,6 +956,7 @@ function renderPairBuilder() {
 
 function syncBuilderFromEditor() {
   cfgState = parseConfigText(document.getElementById('cfg-editor').value);
+  renderBaseControls();
   renderPairBuilder();
 }
 
