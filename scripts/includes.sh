@@ -1,6 +1,9 @@
 #!/bin/bash
 
 CRON_CONFIG_FILE="${HOME}/crontabs"
+WEBUI_CONFIG_SOURCE_FILE_DEFAULT="/tmp/webui-config-source.env"
+CONFIG_SOURCE_REQUESTED="ENV"
+CONFIG_SOURCE_EFFECTIVE="ENV"
 
 #################### Functions ####################
 
@@ -98,13 +101,61 @@ function read_env_file_value() {
 }
 
 ########################################
-# Get a variable value, resolving in the following precedence (highest first):
+# Resolve requested/effective config source mode.
+# Requested mode is ENV or DOTENV. Effective mode falls back to ENV when
+# DOTENV is requested but /.env is unavailable.
+# Arguments:
+#     None
+########################################
+function resolve_config_source_mode() {
+    get_env WEBUI_CONFIG_SOURCE_FILE
+    get_env WEBUI_CONFIG_SOURCE
+
+    local config_source_file="${WEBUI_CONFIG_SOURCE_FILE:-${WEBUI_CONFIG_SOURCE_FILE_DEFAULT}}"
+    local requested="${WEBUI_CONFIG_SOURCE:-ENV}"
+
+    if [[ -f "${config_source_file}" ]]; then
+        local line
+        while IFS= read -r line || [[ -n "${line}" ]]; do
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
+            [[ -z "${line}" || "${line:0:1}" == "#" ]] && continue
+            if [[ "${line}" =~ ^MODE[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+                requested="${BASH_REMATCH[1]}"
+                break
+            fi
+        done < "${config_source_file}"
+    fi
+
+    requested=$(echo "${requested}" | tr '[:lower:]' '[:upper:]')
+    if [[ "${requested}" != "DOTENV" ]]; then
+        requested="ENV"
+    fi
+
+    CONFIG_SOURCE_REQUESTED="${requested}"
+    CONFIG_SOURCE_EFFECTIVE="${requested}"
+    if [[ "${CONFIG_SOURCE_EFFECTIVE}" == "DOTENV" && ! -f "/.env" ]]; then
+        CONFIG_SOURCE_EFFECTIVE="ENV"
+    fi
+}
+
+########################################
+# Get a variable value, resolving by active config source mode.
+# For ENV mode precedence (highest first):
 #     web UI override variable (WEBUI_OVERRIDE_<VAR>, from override file),
 #     web UI override file-secret (WEBUI_OVERRIDE_<VAR>_FILE),
 #     environment variable (<VAR>),
 #     secret file in environment variables (<VAR>_FILE),
 #     secret file in .env file (DOTENV_<VAR>_FILE),
 #     value from .env file (DOTENV_<VAR>).
+# For DOTENV mode precedence:
+#     web UI override variable (WEBUI_OVERRIDE_<VAR>, from override file),
+#     web UI override file-secret (WEBUI_OVERRIDE_<VAR>_FILE),
+#     secret file in .env file (DOTENV_<VAR>_FILE),
+#     value from .env file (DOTENV_<VAR>),
+#     environment variable (<VAR>),
+#     secret file in environment variables (<VAR>_FILE).
+# In DOTENV mode, only non-empty parsed .env entries take precedence.
 # Arguments:
 #     variable name
 # Outputs:
@@ -123,14 +174,32 @@ function get_env() {
         VALUE="${!VAR_WEBUI_OVERRIDE}"
     elif [[ -n "${!VAR_WEBUI_OVERRIDE_FILE:-}" ]]; then
         VALUE="$(read_env_file_value "${!VAR_WEBUI_OVERRIDE_FILE}")"
-    elif [[ -n "${!VAR:-}" ]]; then
-        VALUE="${!VAR}"
-    elif [[ -n "${!VAR_FILE:-}" ]]; then
-        VALUE="$(read_env_file_value "${!VAR_FILE}")"
-    elif [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
-        VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
-    elif [[ -n "${!VAR_DOTENV:-}" ]]; then
-        VALUE="${!VAR_DOTENV}"
+    elif [[ "${CONFIG_SOURCE_EFFECTIVE:-ENV}" == "DOTENV" ]]; then
+        if [[ -n "${!VAR_DOTENV_FILE:-}" && -r "${!VAR_DOTENV_FILE}" ]]; then
+            local DOTENV_FILE_VALUE
+            DOTENV_FILE_VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
+            if [[ -n "${DOTENV_FILE_VALUE}" ]]; then
+                VALUE="${DOTENV_FILE_VALUE}"
+            fi
+        fi
+
+        if [[ -z "${VALUE}" && -n "${!VAR_DOTENV:-}" ]]; then
+            VALUE="${!VAR_DOTENV}"
+        elif [[ -z "${VALUE}" && -n "${!VAR:-}" ]]; then
+            VALUE="${!VAR}"
+        elif [[ -z "${VALUE}" && -n "${!VAR_FILE:-}" ]]; then
+            VALUE="$(read_env_file_value "${!VAR_FILE}")"
+        fi
+    else
+        if [[ -n "${!VAR:-}" ]]; then
+            VALUE="${!VAR}"
+        elif [[ -n "${!VAR_FILE:-}" ]]; then
+            VALUE="$(read_env_file_value "${!VAR_FILE}")"
+        elif [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
+            VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
+        elif [[ -n "${!VAR_DOTENV:-}" ]]; then
+            VALUE="${!VAR_DOTENV}"
+        fi
     fi
 
     export "${VAR}=${VALUE}"
@@ -256,6 +325,7 @@ function build_schedule_groups() {
 ########################################
 function init_env() {
     export_env_file
+    resolve_config_source_mode
 
     # CRON
     get_env CRON
@@ -316,6 +386,8 @@ function init_env() {
     get_source_album_list
 
     color yellow "========================================"
+    color yellow "CONFIG_SOURCE_REQUESTED: ${CONFIG_SOURCE_REQUESTED}"
+    color yellow "CONFIG_SOURCE_EFFECTIVE: ${CONFIG_SOURCE_EFFECTIVE}"
     color yellow "CRON: ${CRON}"
     color yellow "CRON_OVERLAP: ${CRON_OVERLAP}"
     color yellow "TIMEZONE: ${TIMEZONE}"
