@@ -31,6 +31,9 @@ Container images are published to GitHub Container Registry at
 are `:latest` and versioned release tags; the examples below use `:latest`.
 Automated nightly builds from `main` are also published as `:nightly` if you
 want to test the newest changes before a release.
+Auto-generated tags may also appear for development branches such as
+`experimental` and other feature branches, but those builds are primarily for
+development/testing and should not be treated as stable releases.
 
 ### 1. Obtain Google Photos credentials
 
