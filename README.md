@@ -29,11 +29,13 @@ easy to adopt if you are already familiar with that project.
 Container images are published to GitHub Container Registry at
 `ghcr.io/benjithatfoxguy/google-photos-cron-docker`. The tested, stable options
 are `:latest` and versioned release tags; the examples below use `:latest`.
-Automated nightly builds from `main` are also published as `:nightly` if you
-want to test the newest changes before a release.
+Automated nightly builds from `main` are also published as `:nightly`; that is
+the intended bleeding-edge tag for users who want to test the newest changes
+before a release.
 Auto-generated tags may also appear for development branches such as
-`experimental` and other feature branches, but those builds are primarily for
-development/testing and should not be treated as stable releases.
+`experimental` and other feature branches, but those builds are for
+development/testing only and should not be used unless you are actively
+contributing or helping validate a branch or pull request.
 
 ### 1. Obtain Google Photos credentials
 
