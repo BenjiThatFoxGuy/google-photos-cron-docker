@@ -428,12 +428,17 @@ func (s *webuiServer) handleConfigSource(w http.ResponseWriter, r *http.Request)
 		_, cfgErr := os.Stat(s.configFile)
 		cfgExists := cfgErr == nil
 		requested, effective := s.resolveConfigSourceMode(cfgExists)
-		json.NewEncoder(w).Encode(map[string]any{
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"status": "ok",
 			"requested": requested,
 			"effective": effective,
 			"config_file_exists": cfgExists,
-		})
+		}); err != nil {
+			http.Error(w, "failed to encode JSON response", http.StatusInternalServerError)
+			return
+		}
 
 	case http.MethodPost:
 		var req struct {

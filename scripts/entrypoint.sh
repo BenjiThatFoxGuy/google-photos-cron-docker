@@ -43,11 +43,19 @@ function ensure_dotenv_permissions() {
     fi
 
     if [[ ! -r "/.env" || ! -w "/.env" ]]; then
-        color yellow "Adjusting /.env permissions for runtime config access"
-        if chmod 600 "/.env" 2>/dev/null; then
-            color blue "Updated /.env permissions to 600"
+        local current_uid dotenv_owner_uid
+        current_uid="$(id -u)"
+        dotenv_owner_uid="$(stat -c '%u' "/.env" 2>/dev/null || true)"
+
+        if [[ "${ALLOW_DOTENV_CHMOD:-0}" == "1" && "${current_uid}" == "0" && -n "${dotenv_owner_uid}" && "${dotenv_owner_uid}" == "${current_uid}" ]]; then
+            color yellow "Adjusting /.env permissions for runtime config access"
+            if chmod 600 "/.env" 2>/dev/null; then
+                color blue "Updated /.env permissions to 600"
+            else
+                color yellow "Could not chmod /.env; web UI save may fail"
+            fi
         else
-            color yellow "Could not chmod /.env (likely read-only bind mount); web UI save may fail"
+            color yellow "Warning: /.env is not readable/writable by this container process; fix permissions on the host or set ALLOW_DOTENV_CHMOD=1 to permit chmod only when running as root on a root-owned /.env"
         fi
     fi
 

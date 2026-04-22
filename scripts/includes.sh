@@ -175,13 +175,19 @@ function get_env() {
     elif [[ -n "${!VAR_WEBUI_OVERRIDE_FILE:-}" ]]; then
         VALUE="$(read_env_file_value "${!VAR_WEBUI_OVERRIDE_FILE}")"
     elif [[ "${CONFIG_SOURCE_EFFECTIVE:-ENV}" == "DOTENV" ]]; then
-        if [[ -n "${!VAR_DOTENV_FILE:-}" ]]; then
-            VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
-        elif [[ -n "${!VAR_DOTENV:-}" ]]; then
+        if [[ -n "${!VAR_DOTENV_FILE:-}" && -r "${!VAR_DOTENV_FILE}" ]]; then
+            local DOTENV_FILE_VALUE
+            DOTENV_FILE_VALUE="$(read_env_file_value "${!VAR_DOTENV_FILE}")"
+            if [[ -n "${DOTENV_FILE_VALUE}" ]]; then
+                VALUE="${DOTENV_FILE_VALUE}"
+            fi
+        fi
+
+        if [[ -z "${VALUE}" && -n "${!VAR_DOTENV:-}" ]]; then
             VALUE="${!VAR_DOTENV}"
-        elif [[ -n "${!VAR:-}" ]]; then
+        elif [[ -z "${VALUE}" && -n "${!VAR:-}" ]]; then
             VALUE="${!VAR}"
-        elif [[ -n "${!VAR_FILE:-}" ]]; then
+        elif [[ -z "${VALUE}" && -n "${!VAR_FILE:-}" ]]; then
             VALUE="$(read_env_file_value "${!VAR_FILE}")"
         fi
     else

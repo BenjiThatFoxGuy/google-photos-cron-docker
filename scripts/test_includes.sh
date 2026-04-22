@@ -28,6 +28,7 @@ override_file="${SCRATCH}/overrides.env"
 cat > "${override_file}" << EOF
 GOTOHP_THREADS=9
 EOF
+chmod 600 "${override_file}"
 export WEBUI_OVERRIDE_FILE="${override_file}"
 export GOTOHP_THREADS="3"
 export_env_file
@@ -46,6 +47,7 @@ printf '11\n' > "${secret_file}"
 cat > "${override_file}" << EOF
 GOTOHP_THREADS_FILE=${secret_file}
 EOF
+chmod 600 "${override_file}"
 export WEBUI_OVERRIDE_FILE="${override_file}"
 export_env_file
 get_env GOTOHP_THREADS
@@ -62,6 +64,7 @@ cat > "${override_file}" << EOF
 not a valid line
 GOTOHP_THREADS=7
 EOF
+chmod 600 "${override_file}"
 export WEBUI_OVERRIDE_FILE="${override_file}"
 export_env_file
 get_env GOTOHP_THREADS
@@ -79,6 +82,7 @@ printf '13\r\n\r\n' > "${secret_file}"
 cat > "${override_file}" << EOF
 GOTOHP_THREADS_FILE=${secret_file}
 EOF
+chmod 600 "${override_file}"
 export WEBUI_OVERRIDE_FILE="${override_file}"
 export_env_file
 get_env GOTOHP_THREADS
@@ -124,6 +128,20 @@ if [[ "${CONFIG_SOURCE_REQUESTED}" == "DOTENV" && "${CONFIG_SOURCE_EFFECTIVE}" =
     pass "Test 7: missing /.env forces effective ENV mode"
 else
     fail "Test 7: expected requested DOTENV and effective ENV, got ${CONFIG_SOURCE_REQUESTED}/${CONFIG_SOURCE_EFFECTIVE}"
+fi
+
+echo "--- Test 8: DOTENV mode falls back to env when DOTENV *_FILE is empty ---"
+reset_vars
+dotenv_secret_file="${SCRATCH}/dotenv_threads_empty.txt"
+: > "${dotenv_secret_file}"
+export DOTENV_GOTOHP_THREADS_FILE="${dotenv_secret_file}"
+export GOTOHP_THREADS="3"
+CONFIG_SOURCE_EFFECTIVE="DOTENV"
+get_env GOTOHP_THREADS
+if [[ "${GOTOHP_THREADS}" == "3" ]]; then
+    pass "Test 8: empty DOTENV *_FILE falls back to env value"
+else
+    fail "Test 8: expected GOTOHP_THREADS=3, got ${GOTOHP_THREADS}"
 fi
 
 echo
