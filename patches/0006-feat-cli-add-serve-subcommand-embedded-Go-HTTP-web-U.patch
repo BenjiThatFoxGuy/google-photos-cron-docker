@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..30f107c
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,482 @@
+@@ -0,0 +1,575 @@
 +//go:build cli
 +
 +package main
@@ -421,53 +421,53 @@ index 0000000..30f107c
 +		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 +	}
 +}
-
-func (s *webuiServer) handleConfigSource(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		_, cfgErr := os.Stat(s.configFile)
-		cfgExists := cfgErr == nil
-		requested, effective := s.resolveConfigSourceMode(cfgExists)
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Cache-Control", "no-store")
-		if err := json.NewEncoder(w).Encode(map[string]any{
-			"status": "ok",
-			"requested": requested,
-			"effective": effective,
-			"config_file_exists": cfgExists,
-		}); err != nil {
-			http.Error(w, "failed to encode JSON response", http.StatusInternalServerError)
-			return
-		}
-
-	case http.MethodPost:
-		var req struct {
-			Mode string `json:"mode"`
-		}
-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-			jsonError(w, "invalid JSON body", http.StatusBadRequest)
-			return
-		}
-		mode := normalizeSourceMode(req.Mode)
-		if mode == "DOTENV" {
-			if _, err := os.Stat(s.configFile); err != nil {
-				jsonError(w, "cannot switch to DOTENV: /.env is missing; mount it first", http.StatusConflict)
-				return
-			}
-		}
-		if err := s.writeConfigSourceMode(mode); err != nil {
-			jsonError(w, "failed to save config source mode", http.StatusInternalServerError)
-			return
-		}
-		_, cfgErr := os.Stat(s.configFile)
-		cfgExists := cfgErr == nil
-		requested, effective := s.resolveConfigSourceMode(cfgExists)
-		jsonReply(w, http.StatusOK, "ok", fmt.Sprintf("config source set to %s (effective: %s)", requested, effective), 0)
-
-	default:
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-	}
-}
++
++func (s *webuiServer) handleConfigSource(w http.ResponseWriter, r *http.Request) {
++	switch r.Method {
++	case http.MethodGet:
++		_, cfgErr := os.Stat(s.configFile)
++		cfgExists := cfgErr == nil
++		requested, effective := s.resolveConfigSourceMode(cfgExists)
++		w.Header().Set("Content-Type", "application/json")
++		w.Header().Set("Cache-Control", "no-store")
++		if err := json.NewEncoder(w).Encode(map[string]any{
++			"status": "ok",
++			"requested": requested,
++			"effective": effective,
++			"config_file_exists": cfgExists,
++		}); err != nil {
++			http.Error(w, "failed to encode JSON response", http.StatusInternalServerError)
++			return
++		}
++
++	case http.MethodPost:
++		var req struct {
++			Mode string `json:"mode"`
++		}
++		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
++			jsonError(w, "invalid JSON body", http.StatusBadRequest)
++			return
++		}
++		mode := normalizeSourceMode(req.Mode)
++		if mode == "DOTENV" {
++			if _, err := os.Stat(s.configFile); err != nil {
++				jsonError(w, "cannot switch to DOTENV: /.env is missing; mount it first", http.StatusConflict)
++				return
++			}
++		}
++		if err := s.writeConfigSourceMode(mode); err != nil {
++			jsonError(w, "failed to save config source mode", http.StatusInternalServerError)
++			return
++		}
++		_, cfgErr := os.Stat(s.configFile)
++		cfgExists := cfgErr == nil
++		requested, effective := s.resolveConfigSourceMode(cfgExists)
++		jsonReply(w, http.StatusOK, "ok", fmt.Sprintf("config source set to %s (effective: %s)", requested, effective), 0)
++
++	default:
++		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
++	}
++}
 +
 +// ── helpers ───────────────────────────────────────────────────────────────────
 +
@@ -539,43 +539,43 @@ func (s *webuiServer) handleConfigSource(w http.ResponseWriter, r *http.Request)
 +	}
 +	return strings.Join(lines, "\n")
 +}
-
-func normalizeSourceMode(mode string) string {
-	if strings.EqualFold(strings.TrimSpace(mode), "DOTENV") {
-		return "DOTENV"
-	}
-	return "ENV"
-}
-
-func (s *webuiServer) resolveConfigSourceMode(configFileExists bool) (string, string) {
-	requested := normalizeSourceMode(envOr("WEBUI_CONFIG_SOURCE", "ENV"))
-	if vars := readEnvFile(s.configSourceFile); vars != nil {
-		if mode, ok := vars["MODE"]; ok {
-			requested = normalizeSourceMode(mode)
-		}
-	}
-	effective := requested
-	if effective == "DOTENV" && !configFileExists {
-		effective = "ENV"
-	}
-	return requested, effective
-}
-
-func (s *webuiServer) writeConfigSourceMode(mode string) error {
-	mode = normalizeSourceMode(mode)
-	if err := os.MkdirAll(filepath.Dir(s.configSourceFile), 0755); err != nil {
-		return err
-	}
-	tmpFile := s.configSourceFile + ".tmp"
-	if err := os.WriteFile(tmpFile, []byte("MODE="+mode+"\n"), 0600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpFile, s.configSourceFile); err != nil {
-		_ = os.Remove(tmpFile)
-		return err
-	}
-	return os.Chmod(s.configSourceFile, 0600)
-}
++
++func normalizeSourceMode(mode string) string {
++	if strings.EqualFold(strings.TrimSpace(mode), "DOTENV") {
++		return "DOTENV"
++	}
++	return "ENV"
++}
++
++func (s *webuiServer) resolveConfigSourceMode(configFileExists bool) (string, string) {
++	requested := normalizeSourceMode(envOr("WEBUI_CONFIG_SOURCE", "ENV"))
++	if vars := readEnvFile(s.configSourceFile); vars != nil {
++		if mode, ok := vars["MODE"]; ok {
++			requested = normalizeSourceMode(mode)
++		}
++	}
++	effective := requested
++	if effective == "DOTENV" && !configFileExists {
++		effective = "ENV"
++	}
++	return requested, effective
++}
++
++func (s *webuiServer) writeConfigSourceMode(mode string) error {
++	mode = normalizeSourceMode(mode)
++	if err := os.MkdirAll(filepath.Dir(s.configSourceFile), 0755); err != nil {
++		return err
++	}
++	tmpFile := s.configSourceFile + ".tmp"
++	if err := os.WriteFile(tmpFile, []byte("MODE="+mode+"\n"), 0600); err != nil {
++		return err
++	}
++	if err := os.Rename(tmpFile, s.configSourceFile); err != nil {
++		_ = os.Remove(tmpFile)
++		return err
++	}
++	return os.Chmod(s.configSourceFile, 0600)
++}
 +
 +func renderConfigFromEnvironment() string {
 +	keys := make([]string, 0, 64)
