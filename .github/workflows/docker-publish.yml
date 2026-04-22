@@ -70,19 +70,10 @@ jobs:
                 return;
               }
 
-              const branch = ref.replace('refs/heads/', '');
-              const head = `${context.repo.owner}:${branch}`;
-              const { data: pulls } = await github.rest.pulls.list({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                state: 'open',
-                head,
-                per_page: 1,
-              });
-
-              // If this branch already has an open PR, prefer the pull_request
-              // synchronize build and skip this push-triggered duplicate.
-              core.setOutput('should_build', pulls.length > 0 ? 'false' : 'true');
+              // Always build on branch pushes. We intentionally allow both
+              // push and pull_request runs so feature branches keep producing
+              // fresh test images even while a PR is open.
+              core.setOutput('should_build', 'true');
               return;
             }
 
