@@ -26,6 +26,11 @@ easy to adopt if you are already familiar with that project.
 
 ## Quick start
 
+Container images are published to GitHub Container Registry at
+`ghcr.io/benjithatfoxguy/google-photos-cron-docker`. The examples below use the
+stable `:latest` tag; automated nightly builds from `main` are also published as
+`:nightly` if you want to test the newest changes.
+
 ### 1. Obtain Google Photos credentials
 
 gotohp requires mobile-app credentials obtained once from your Android device.
