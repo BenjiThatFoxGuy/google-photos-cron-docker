@@ -1,20 +1,20 @@
-From 3ec6466622e3678214ef5675b551dfd017162a05 Mon Sep 17 00:00:00 2001
+From cf815c143ed26c05d5e295467f5f7e902420bbf1 Mon Sep 17 00:00:00 2001
 From: Dockerfile <build@dockerfile>
 Date: Tue, 21 Apr 2026 00:03:44 +0000
-Subject: [PATCH] =?UTF-8?q?feat(cli):=20add=20"serve"=20subcommand=20?=
+Subject: [PATCH 3/3] =?UTF-8?q?feat(cli):=20add=20"serve"=20subcommand=20?=
  =?UTF-8?q?=E2=80=94=20embedded=20Go=20HTTP=20web=20UI=20server?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 ---
- cli_shared.go   |  19 +++
- webui_server.go | 444 ++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 463 insertions(+)
+ cli_shared.go   |  19 ++
+ webui_server.go | 482 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 501 insertions(+)
  create mode 100644 webui_server.go
 
 diff --git a/cli_shared.go b/cli_shared.go
-index 28537ac..6550700 100644
+index a21d8cd..3387d98 100644
 --- a/cli_shared.go
 +++ b/cli_shared.go
 @@ -24,6 +24,7 @@ func isCLICommand(arg string) bool {
@@ -25,7 +25,7 @@ index 28537ac..6550700 100644
  	}
  
  	return slices.Contains(supportedCommands, arg)
-@@ -150,6 +151,24 @@ func runCLI() {
+@@ -156,6 +157,24 @@ func runCLI() {
  		printCLIHelp()
  	case "version", "--version", "-v":
  		fmt.Printf("gotohp v%s\n", getAppVersion())
@@ -52,7 +52,7 @@ index 28537ac..6550700 100644
  		printCLIHelp()
 diff --git a/webui_server.go b/webui_server.go
 new file mode 100644
-index 0000000..30f107c
+index 0000000..d33e57a
 --- /dev/null
 +++ b/webui_server.go
 @@ -0,0 +1,482 @@
@@ -539,4 +539,5 @@ index 0000000..30f107c
 +	return false
 +}
 -- 
-2.53.0
+2.45.2
+
