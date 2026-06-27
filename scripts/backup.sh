@@ -52,6 +52,7 @@ function build_gotohp_flags() {
     GOTOHP_EFFECTIVE_DISABLE_FILTER="${DISABLE_FILTER}"
     local DATE_FROM_FILENAME
     DATE_FROM_FILENAME=$(echo "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]:-${GOTOHP_DATE_FROM_FILENAME}}" | tr '[:lower:]' '[:upper:]')
+    local EXCLUDE="${GOTOHP_EXCLUDE_LIST[${i}]:-${GOTOHP_EXCLUDE}}"
 
     GOTOHP_FLAGS+=("--threads" "${THREADS}")
     GOTOHP_FLAGS+=("--log-level" "${LOG_LEVEL}")
@@ -70,6 +71,9 @@ function build_gotohp_flags() {
     fi
     if [[ "${DATE_FROM_FILENAME}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--date-from-filename")
+    fi
+    if [[ -n "${EXCLUDE}" ]]; then
+        GOTOHP_FLAGS+=("--exclude" "${EXCLUDE}")
     fi
 }
 

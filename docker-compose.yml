@@ -27,6 +27,7 @@ services:
       GOTOHP_DELETE: "FALSE"        # delete source file after upload
       GOTOHP_DISABLE_FILTER: "FALSE"        # upload all file types (not just media)
       GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
+      GOTOHP_EXCLUDE: ""               # skip dirs matching this name (e.g. @eaDir)
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
 
       # Optional experimental web UI (auto-enabled if WEBUI_BIND or WEBUI_PORT is set)
@@ -67,8 +68,10 @@ services:
   #     # Source 1 → Album 1
   #     SOURCE_PATH_1: /screenshots
   #     ALBUM_NAME_1: "Screenshots"
-  #     # Override recursive for this pair only (disable sub-directory scan)
-  #     GOTOHP_RECURSIVE_1: "FALSE"
+      #     # Override recursive for this pair only (disable sub-directory scan)
+      #     GOTOHP_RECURSIVE_1: "FALSE"
+      #     # Override exclude for this pair only
+      #     GOTOHP_EXCLUDE_1: "@eaDir"
   #     # Per-pair credential override — upload pair 1 to a different Google account
   #     # GOTOHP_CREDS_1: "androidId=BBBB..."
   #     # GOTOHP_EMAIL_1: "bob@gmail.com"

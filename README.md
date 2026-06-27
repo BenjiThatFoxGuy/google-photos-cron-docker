@@ -161,6 +161,7 @@ the indexed form.  Both styles may be combined.
 | `GOTOHP_DELETE`             | `FALSE` | Delete source file after successful upload |
 | `GOTOHP_DISABLE_FILTER`     | `FALSE` | Upload all file types, not just media |
 | `GOTOHP_DATE_FROM_FILENAME` | `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
+| `GOTOHP_EXCLUDE`            | `""`    | Skip directories whose name matches this pattern during recursive walk (e.g. `@eaDir`) |
 | `GOTOHP_LOG_LEVEL`          | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
 
 ### Per-pair upload option overrides
@@ -177,6 +178,7 @@ global value is used as the default.
 | `GOTOHP_DELETE_N`             | Override delete flag for pair N |
 | `GOTOHP_DISABLE_FILTER_N`     | Override disable-filter flag for pair N |
 | `GOTOHP_DATE_FROM_FILENAME_N` | Override date-from-filename flag for pair N |
+| `GOTOHP_EXCLUDE_N`            | Override exclude pattern for pair N |
 | `GOTOHP_LOG_LEVEL_N`          | Override log level for pair N |
 
 Example — use more threads for the large camera roll but fewer for screenshots:
