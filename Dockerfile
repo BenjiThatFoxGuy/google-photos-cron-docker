@@ -23,7 +23,7 @@
 # Note: --exclude flag support is now in upstream gotohp (merged via xob0t/gotohp#39)
 FROM golang:1.26-alpine AS builder
 
-ARG GOTOHP_VERSION=v0.8.0
+ARG GOTOHP_VERSION=v0.7.0
 ARG DOCKER_BRANCH
 ARG DOCKER_COMMIT
 
