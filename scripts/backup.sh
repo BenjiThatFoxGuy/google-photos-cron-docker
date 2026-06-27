@@ -75,6 +75,7 @@ function build_gotohp_flags() {
 
 ########################################
 # Extract a simple top-level string field from gotohp's compact progress JSON.
+# Returns empty string if field not found. Validates JSON structure exists first.
 # Arguments:
 #     JSON content
 #     field name
@@ -82,6 +83,7 @@ function build_gotohp_flags() {
 function progress_json_string() {
     local json="$1"
     local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || return 0
     local regex="\"${field}\":\"([^\"]*)\""
     if [[ "${json}" =~ ${regex} ]]; then
         printf '%s' "${BASH_REMATCH[1]}"
@@ -90,6 +92,7 @@ function progress_json_string() {
 
 ########################################
 # Extract a simple top-level numeric field from gotohp's compact progress JSON.
+# Returns 0 if field not found. Validates JSON structure exists first.
 # Arguments:
 #     JSON content
 #     field name
@@ -97,6 +100,7 @@ function progress_json_string() {
 function progress_json_number() {
     local json="$1"
     local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || { printf '0'; return 0; }
     local regex="\"${field}\":([0-9]+(\.[0-9]+)?)"
     if [[ "${json}" =~ ${regex} ]]; then
         printf '%s' "${BASH_REMATCH[1]}"
@@ -182,6 +186,7 @@ function log_upload_progress() {
 
 ########################################
 # Run gotohp upload and periodically mirror progress JSON into Docker logs.
+# Uses unique temp files per invocation to avoid conflicts in concurrent scenarios.
 # Arguments:
 #     source path
 #     gotohp upload flags...
@@ -195,22 +200,26 @@ function run_gotohp_upload_with_progress() {
         interval="60"
     fi
 
+    local progress_file upload_log_file
+    progress_file=$(mktemp /tmp/gotohp-progress.XXXXXX.json) || progress_file="/tmp/gotohp-progress.$$.json"
+    upload_log_file=$(mktemp /tmp/gotohp-upload.XXXXXX.log) || upload_log_file="/tmp/gotohp-upload.$$.log"
+
     if [[ "${interval}" == "0" ]]; then
         if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
             gotohp upload "${source}" "$@"
         else
-            gotohp upload "${source}" "$@" >/tmp/gotohp-upload.log 2>&1
+            gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1
         fi
+        rm -f "${progress_file}" "${upload_log_file}"
         return $?
     fi
 
-    local progress_file="${GOTOHP_PROGRESS_FILE:-/tmp/gotohp-progress.json}"
     local upload_pid elapsed rc
 
     if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
         gotohp upload "${source}" "$@" &
     else
-        gotohp upload "${source}" "$@" >/tmp/gotohp-upload.log 2>&1 &
+        gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1 &
     fi
     upload_pid=$!
     elapsed=0
@@ -227,6 +236,7 @@ function run_gotohp_upload_with_progress() {
     wait "${upload_pid}"
     rc=$?
     log_upload_progress "${source}" "${progress_file}" "final"
+    rm -f "${progress_file}" "${upload_log_file}"
     return ${rc}
 }
 
