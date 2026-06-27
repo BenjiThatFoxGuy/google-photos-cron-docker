@@ -571,12 +571,13 @@ SOURCE_PATH_0=/mnt/photos"></textarea>
   const metaCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
   if (bvGotohp) {
     if (bvGotohp.textContent.trim() === '__GOTOHP_VERSION__') {
-      // Placeholder not replaced — running outside a Docker build (development).
       bvGotohp.textContent = 'development';
-    } else if (bvDocker && metaBranch && metaBranch !== '__DOCKER_BRANCH__') {
-      // Docker build with CI metadata — show this repo's branch ⇧ short commit.
+    }
+    if (metaBranch && metaBranch !== '__DOCKER_BRANCH__') {
       const shortCommit = (metaCommit && metaCommit !== '__DOCKER_COMMIT__') ? metaCommit.slice(0, 12) : '';
-      bvDocker.textContent = '\u00a0\u00b7\u00a0' + metaBranch + (shortCommit ? ' \u2387 ' + shortCommit : '');
+      if (bvDocker) {
+        bvDocker.textContent = '\u00a0\u00b7\u00a0' + metaBranch + (shortCommit ? ' \u2387 ' + shortCommit : '');
+      }
     }
   }
 }
