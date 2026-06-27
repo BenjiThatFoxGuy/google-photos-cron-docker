@@ -108,8 +108,9 @@ function build_find_prune_args() {
 
 ########################################
 # Hash the effective source tree metadata without reading file contents.
-# Includes file paths, entry type, size, mtime, ctime, mode, ownership, inode,
-# and symlink target.  Directory timestamps are intentionally omitted so churn
+# Includes file paths, entry type, size, mtime, ctime, ownership, inode,
+# and symlink target. Excludes file mode bits to avoid false positives from
+# umask changes. Directory timestamps are intentionally omitted so churn
 # inside excluded child directories does not dirty the included parent tree.
 # Arguments:
 #     source path
@@ -147,8 +148,8 @@ function compute_tree_fingerprint() {
     }
 
     if ! find -- "${source}" "${depth_args[@]}" "${prune_args[@]}" \
-        "(" "-type" "d" "-printf" 'd\t%P\t\t\t\t%m\t%U\t%G\t%i\t\0' ")" "-o" \
-        "(" "!" "-type" "d" "-printf" '%y\t%P\t%s\t%T@\t%C@\t%m\t%U\t%G\t%i\t%l\0' ")" \
+        "(" "-type" "d" "-printf" 'd\t%P\t\t\t\t%U\t%G\t%i\t\0' ")" "-o" \
+        "(" "!" "-type" "d" "-printf" '%y\t%P\t%s\t%T@\t%C@\t%U\t%G\t%i\t%l\0' ")" \
         > "${manifest_file}" 2> "${error_file}"; then
         color red "Error fingerprinting source path (find failed): ${source}"
         color red "find output: $(<"${error_file}")"
@@ -177,6 +178,8 @@ function compute_tree_fingerprint() {
 # Build the persistent state path for a source/album pair and effective upload
 # configuration.  Config changes intentionally use a different state file so a
 # pair is uploaded once to seed a clean state for the new behaviour.
+# State filename includes readable identifiers (source, album) plus a hash of
+# all effective config for debugging and cleanup.
 # Outputs:
 #     PAIR_STATE_FILE global variable
 ########################################
@@ -191,7 +194,7 @@ function build_pair_state_file() {
     local date_from_filename="$8"
     local exclude="$9"
 
-    local key_hash_line key_hash
+    local key_hash_line key_hash source_slug album_slug
     key_hash_line="$(printf '%q\n' \
         "schema=skip-unchanged-v1" \
         "source=${source}" \
@@ -205,7 +208,10 @@ function build_pair_state_file() {
         "exclude=${exclude}" \
         | sha256sum)" || return 1
     key_hash="${key_hash_line%% *}"
-    PAIR_STATE_FILE="${SKIP_UNCHANGED_STATE_DIR}/${key_hash}.state"
+
+    source_slug="$(printf '%s' "${source}" | sed 's|/|_|g' | cut -c1-20)"
+    album_slug="$(printf '%s' "${album}" | sed 's|[^a-zA-Z0-9._-]|_|g' | cut -c1-20)"
+    PAIR_STATE_FILE="${SKIP_UNCHANGED_STATE_DIR}/${source_slug}_${album_slug:+${album_slug}_}${key_hash:0:8}.state"
 }
 
 ########################################
@@ -326,6 +332,17 @@ fi
 HAS_ERROR="FALSE"
 STATE_UPDATES=()
 SKIP_UNCHANGED_STATE_DIR="${GOTOHP_SKIP_UNCHANGED_STATE_DIR:-/config/gotohp-wrapper/skip-unchanged/v1}"
+
+########################################
+# Clean up old skip-unchanged state files to prevent directory bloat.
+# Removes state files not accessed in the last 60 days.
+########################################
+function cleanup_old_state_files() {
+    [[ ! -d "${SKIP_UNCHANGED_STATE_DIR}" ]] && return 0
+    find "${SKIP_UNCHANGED_STATE_DIR}" -maxdepth 1 -name "*.state" -type f -atime +60 -delete 2>/dev/null || true
+}
+
+cleanup_old_state_files
 
 # Determine which pair indices to process.
 # If PAIR_INDICES is set (comma-separated), process only those pairs.
