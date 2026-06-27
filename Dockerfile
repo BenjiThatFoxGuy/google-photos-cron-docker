@@ -14,16 +14,14 @@
 #      Re-export with: git format-patch HEAD~N -o patches/
 #
 # Patches currently applied (see patches/ directory for full diffs):
-#   0001 - backend/wails_app.go:   guard with //go:build !cli
-#   0002 - backend/album.go:       split Wails init() into album_gui.go
-#   0003 - backend/upload.go:      split Wails init() into upload_gui.go
-#   0004 - cli.go:                 supply os.Pipe() to Bubble Tea for epoll safety
-#   0005 - progress_writer.go:     write real-time progress JSON for web UI
-#   0006 - webui_server.go:        "serve" subcommand: embedded Go HTTP server
-# Note: --exclude flag support is now in upstream gotohp (merged via xob0t/gotohp#39)
+#   0001 - cli.go:                 supply os.Pipe() to Bubble Tea for epoll safety
+#   0002 - progress_writer.go:     write real-time progress JSON for web UI
+#   0003 - webui_server.go:        "serve" subcommand: embedded Go HTTP server
+# Note: CLI build guard and Wails isolation now upstream in v0.8.0.
+#       --exclude flag support also upstream (merged via xob0t/gotohp#39)
 FROM golang:1.26-alpine AS builder
 
-ARG GOTOHP_VERSION=v0.7.0
+ARG GOTOHP_VERSION=v0.8.0
 ARG DOCKER_BRANCH
 ARG DOCKER_COMMIT
 
