@@ -166,6 +166,8 @@ the indexed form.  Both styles may be combined.
 | `GOTOHP_SKIP_UNCHANGED`     | `FALSE` | Skip calling gotohp for a source tree when its metadata fingerprint matches the previous successful run |
 | `GOTOHP_SKIP_UNCHANGED_STATE_DIR` | `/config/gotohp-wrapper/skip-unchanged/v1` | Persistent state directory for skip-unchanged fingerprints |
 | `GOTOHP_LOG_LEVEL`          | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
+| `GOTOHP_PROGRESS_LOG_INTERVAL` | `60` | Seconds between Docker log progress summaries while gotohp is uploading; set `0` to disable |
+| `GOTOHP_UPLOAD_RAW_LOGS`    | `FALSE` | Pass raw gotohp TUI output through Docker logs; normally disabled to avoid blank-line/control-code spam |
 
 ### Per-pair upload option overrides
 
@@ -224,6 +226,20 @@ Example:
 GOTOHP_SKIP_UNCHANGED: "TRUE"      # default for all pairs
 GOTOHP_SKIP_UNCHANGED_1: "FALSE"   # always run gotohp for pair 1
 ```
+
+### Docker log progress
+
+During each gotohp upload, the wrapper polls gotohp's progress JSON and writes a
+summary line to the Docker logs every `GOTOHP_PROGRESS_LOG_INTERVAL` seconds
+(default: 60). The line includes completed file count, total file count, failed
+file count, uploaded bytes, total bytes, gotohp state, and active worker status
+with current filenames. A final summary is also logged after each gotohp process
+exits.
+
+Set `GOTOHP_PROGRESS_LOG_INTERVAL=0` to disable these periodic wrapper log lines.
+Raw gotohp TUI output is suppressed by default because it emits terminal control
+codes and blank lines in Docker logs. Set `GOTOHP_UPLOAD_RAW_LOGS=TRUE` to pass
+that raw output through for debugging.
 
 ### Per-pair credential overrides
 

@@ -30,6 +30,8 @@ services:
       GOTOHP_EXCLUDE: ""               # skip dirs matching this name (e.g. @eaDir)
       GOTOHP_SKIP_UNCHANGED: "FALSE"   # opt-in: skip source trees unchanged since last successful run
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
+      GOTOHP_PROGRESS_LOG_INTERVAL: "60"  # seconds between Docker log progress summaries; 0 disables
+      GOTOHP_UPLOAD_RAW_LOGS: "FALSE"     # TRUE passes gotohp TUI output through Docker logs
 
       # Optional experimental web UI (auto-enabled if WEBUI_BIND or WEBUI_PORT is set)
       # WEBUI_PORT: "5572"

@@ -13,7 +13,6 @@
 function switch_credential_for_pair() {
     local i="$1"
     local effective_email="${GOTOHP_EMAIL_LIST[${i}]:-${GOTOHP_EMAIL}}"
-    GOTOHP_EFFECTIVE_EMAIL="${effective_email}"
     if [[ -n "${effective_email}" ]]; then
         color blue "Setting active credential: ${effective_email}"
         if ! gotohp creds set "${effective_email}"; then
@@ -45,23 +44,15 @@ function build_gotohp_flags() {
     GOTOHP_EFFECTIVE_RECURSIVE="${RECURSIVE}"
     local FORCE
     FORCE=$(echo "${GOTOHP_FORCE_LIST[${i}]:-${GOTOHP_FORCE}}" | tr '[:lower:]' '[:upper:]')
-    # Expose for use by skip-unchanged handling in the main loop.
-    GOTOHP_EFFECTIVE_FORCE="${FORCE}"
     local DELETE
     DELETE=$(echo "${GOTOHP_DELETE_LIST[${i}]:-${GOTOHP_DELETE}}" | tr '[:lower:]' '[:upper:]')
-    # Expose for use by skip-unchanged state keys.
-    GOTOHP_EFFECTIVE_DELETE="${DELETE}"
     local DISABLE_FILTER
     DISABLE_FILTER=$(echo "${GOTOHP_DISABLE_FILTER_LIST[${i}]:-${GOTOHP_DISABLE_FILTER}}" | tr '[:lower:]' '[:upper:]')
     # Expose for use by the pre-flight file check in the main loop.
     GOTOHP_EFFECTIVE_DISABLE_FILTER="${DISABLE_FILTER}"
     local DATE_FROM_FILENAME
     DATE_FROM_FILENAME=$(echo "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]:-${GOTOHP_DATE_FROM_FILENAME}}" | tr '[:lower:]' '[:upper:]')
-    # Expose for use by skip-unchanged state keys.
-    GOTOHP_EFFECTIVE_DATE_FROM_FILENAME="${DATE_FROM_FILENAME}"
     local EXCLUDE="${GOTOHP_EXCLUDE_LIST[${i}]:-${GOTOHP_EXCLUDE}}"
-    # Expose for use by pre-flight scans and skip-unchanged fingerprints.
-    GOTOHP_EFFECTIVE_EXCLUDE="${EXCLUDE}"
 
     GOTOHP_FLAGS+=("--threads" "${THREADS}")
     GOTOHP_FLAGS+=("--log-level" "${LOG_LEVEL}")
@@ -87,162 +78,173 @@ function build_gotohp_flags() {
 }
 
 ########################################
-# Build find prune arguments matching gotohp's recursive --exclude behaviour.
-# The patched gotohp CLI excludes child directories whose basename equals the
-# configured pattern.  The source root itself is still scanned.
+# Extract a simple top-level string field from gotohp's compact progress JSON.
+# Returns empty string if field not found. Validates JSON structure exists first.
 # Arguments:
-#     recursive flag (TRUE/FALSE)
-#     exclude pattern
-# Outputs:
-#     FIND_PRUNE_ARGS array
+#     JSON content
+#     field name
 ########################################
-function build_find_prune_args() {
-    local recursive="$1"
-    local exclude="$2"
-
-    FIND_PRUNE_ARGS=()
-    if [[ "${recursive}" == "TRUE" && -n "${exclude}" ]]; then
-        FIND_PRUNE_ARGS=("(" "-mindepth" "1" "-type" "d" "-name" "${exclude}" "-prune" ")" "-o")
+function progress_json_string() {
+    local json="$1"
+    local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || return 0
+    local regex="\"${field}\":\"([^\"]*)\""
+    if [[ "${json}" =~ ${regex} ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
     fi
 }
 
 ########################################
-# Hash the effective source tree metadata without reading file contents.
-# Includes file paths, entry type, size, mtime, ctime, ownership, inode,
-# and symlink target. Excludes file mode bits to avoid false positives from
-# umask changes. Directory timestamps are intentionally omitted so churn
-# inside excluded child directories does not dirty the included parent tree.
+# Extract a simple top-level numeric field from gotohp's compact progress JSON.
+# Returns 0 if field not found. Validates JSON structure exists first.
+# Arguments:
+#     JSON content
+#     field name
+########################################
+function progress_json_number() {
+    local json="$1"
+    local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || { printf '0'; return 0; }
+    local regex="\"${field}\":([0-9]+(\.[0-9]+)?)"
+    if [[ "${json}" =~ ${regex} ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    else
+        printf '0'
+    fi
+}
+
+########################################
+# Build a compact worker summary from gotohp's progress JSON threads array.
+# This intentionally avoids raw Bubble Tea output while preserving the useful
+# TUI information: worker id, status, and current filename.
+# Arguments:
+#     JSON content
+########################################
+function progress_json_threads_summary() {
+    local json="$1"
+    local threads_json thread worker_id status file_name summary
+
+    threads_json="${json#*\"threads\":[}"
+    [[ "${threads_json}" == "${json}" ]] && return 0
+    threads_json="${threads_json%%],\"recent_results\"*}"
+    [[ -z "${threads_json}" || "${threads_json}" == "]" ]] && return 0
+
+    summary=""
+    while [[ "${threads_json}" =~ \{([^{}]*)\} ]]; do
+        thread="${BASH_REMATCH[1]}"
+        threads_json="${threads_json#*\}}"
+
+        worker_id="$(progress_json_number "{${thread}}" "worker_id")"
+        status="$(progress_json_string "{${thread}}" "status")"
+        file_name="$(progress_json_string "{${thread}}" "file_name")"
+        [[ -z "${status}" && -z "${file_name}" ]] && continue
+
+        if [[ -n "${summary}" ]]; then
+            summary="${summary}; "
+        fi
+        summary="${summary}[${worker_id}] ${status:-unknown}"
+        if [[ -n "${file_name}" ]]; then
+            summary="${summary}: ${file_name}"
+        fi
+    done
+
+    printf '%s' "${summary}"
+}
+
+########################################
+# Emit one Docker-log progress line from gotohp's progress JSON file.
 # Arguments:
 #     source path
-#     recursive flag (TRUE/FALSE)
-#     exclude pattern
-# Outputs:
-#     TREE_FINGERPRINT global variable
-# Returns:
-#     0 on success; non-zero on scan/hash failure
+#     progress JSON file path
+#     label (optional; e.g. final)
 ########################################
-function compute_tree_fingerprint() {
+function log_upload_progress() {
     local source="$1"
-    local recursive="$2"
-    local exclude="$3"
+    local progress_file="$2"
+    local label="${3:-progress}"
 
-    local -a depth_args=()
-    if [[ "${recursive}" != "TRUE" ]]; then
-        depth_args=("-maxdepth" "1")
+    [[ -r "${progress_file}" ]] || return 0
+
+    local progress_json state total completed failed bytes_uploaded total_bytes threads_summary
+    progress_json="$(<"${progress_file}")"
+    [[ -n "${progress_json}" ]] || return 0
+
+    state="$(progress_json_string "${progress_json}" "state")"
+    total="$(progress_json_number "${progress_json}" "total_files")"
+    completed="$(progress_json_number "${progress_json}" "completed")"
+    failed="$(progress_json_number "${progress_json}" "failed")"
+    bytes_uploaded="$(progress_json_number "${progress_json}" "bytes_uploaded")"
+    total_bytes="$(progress_json_number "${progress_json}" "total_bytes")"
+    threads_summary="$(progress_json_threads_summary "${progress_json}")"
+
+    if [[ "${state:-idle}" == "idle" && "${total}" == "0" && "${completed}" == "0" && "${failed}" == "0" ]]; then
+        return 0
     fi
 
-    local -a prune_args=()
-    if [[ "${recursive}" == "TRUE" && -n "${exclude}" ]]; then
-        prune_args=("(" "-mindepth" "1" "-type" "d" "-name" "${exclude}" "-prune" ")" "-o")
+    if [[ -n "${threads_summary}" && "${state:-unknown}" == "running" ]]; then
+        color blue "Upload ${label} $(color yellow "[${source}]"): ${completed}/${total} succeeded, ${failed} failed, ${bytes_uploaded}/${total_bytes} bytes uploaded (state: ${state:-unknown}) | workers: ${threads_summary}"
+    else
+        color blue "Upload ${label} $(color yellow "[${source}]"): ${completed}/${total} succeeded, ${failed} failed, ${bytes_uploaded}/${total_bytes} bytes uploaded (state: ${state:-unknown})"
     fi
-
-    local manifest_file sorted_file error_file hash_line
-    manifest_file="$(mktemp)" || return 1
-    sorted_file="$(mktemp)" || {
-        rm -f "${manifest_file}"
-        return 1
-    }
-    error_file="$(mktemp)" || {
-        rm -f "${manifest_file}" "${sorted_file}"
-        return 1
-    }
-
-    if ! find -- "${source}" "${depth_args[@]}" "${prune_args[@]}" \
-        "(" "-type" "d" "-printf" 'd\t%P\t\t\t\t%U\t%G\t%i\t\0' ")" "-o" \
-        "(" "!" "-type" "d" "-printf" '%y\t%P\t%s\t%T@\t%C@\t%U\t%G\t%i\t%l\0' ")" \
-        > "${manifest_file}" 2> "${error_file}"; then
-        color red "Error fingerprinting source path (find failed): ${source}"
-        color red "find output: $(<"${error_file}")"
-        rm -f "${manifest_file}" "${sorted_file}" "${error_file}"
-        return 1
-    fi
-
-    if ! LC_ALL=C sort -z "${manifest_file}" > "${sorted_file}"; then
-        color red "Error fingerprinting source path (sort failed): ${source}"
-        rm -f "${manifest_file}" "${sorted_file}" "${error_file}"
-        return 1
-    fi
-
-    hash_line="$(sha256sum "${sorted_file}")" || {
-        color red "Error fingerprinting source path (sha256sum failed): ${source}"
-        rm -f "${manifest_file}" "${sorted_file}" "${error_file}"
-        return 1
-    }
-    TREE_FINGERPRINT="${hash_line%% *}"
-
-    rm -f "${manifest_file}" "${sorted_file}" "${error_file}"
-    return 0
 }
 
 ########################################
-# Build the persistent state path for a source/album pair and effective upload
-# configuration.  Config changes intentionally use a different state file so a
-# pair is uploaded once to seed a clean state for the new behaviour.
-# State filename includes readable identifiers (source, album) plus a hash of
-# all effective config for debugging and cleanup.
-# Outputs:
-#     PAIR_STATE_FILE global variable
-########################################
-function build_pair_state_file() {
-    local source="$1"
-    local album="$2"
-    local email="$3"
-    local recursive="$4"
-    local force="$5"
-    local delete="$6"
-    local disable_filter="$7"
-    local date_from_filename="$8"
-    local exclude="$9"
-
-    local key_hash_line key_hash source_slug album_slug
-    key_hash_line="$(printf '%q\n' \
-        "schema=skip-unchanged-v1" \
-        "source=${source}" \
-        "album=${album}" \
-        "email=${email}" \
-        "recursive=${recursive}" \
-        "force=${force}" \
-        "delete=${delete}" \
-        "disable_filter=${disable_filter}" \
-        "date_from_filename=${date_from_filename}" \
-        "exclude=${exclude}" \
-        | sha256sum)" || return 1
-    key_hash="${key_hash_line%% *}"
-
-    source_slug="$(printf '%s' "${source}" | sed 's|/|_|g' | cut -c1-20)"
-    album_slug="$(printf '%s' "${album}" | sed 's|[^a-zA-Z0-9._-]|_|g' | cut -c1-20)"
-    PAIR_STATE_FILE="${SKIP_UNCHANGED_STATE_DIR}/${source_slug}_${album_slug:+${album_slug}_}${key_hash:0:8}.state"
-}
-
-########################################
-# Atomically persist a successful post-upload fingerprint.
+# Run gotohp upload and periodically mirror progress JSON into Docker logs.
+# Uses unique temp files per invocation to avoid conflicts in concurrent scenarios.
 # Arguments:
-#     state file path
-#     fingerprint hash
+#     source path
+#     gotohp upload flags...
 ########################################
-function write_skip_unchanged_state() {
-    local state_file="$1"
-    local fingerprint="$2"
-    local state_dir state_base tmp_state_file
+function run_gotohp_upload_with_progress() {
+    local source="$1"
+    shift
 
-    state_dir="$(dirname "${state_file}")"
-    state_base="$(basename "${state_file}")"
-    mkdir -p "${state_dir}" || return 1
-    tmp_state_file="$(mktemp "${state_dir}/${state_base}.tmp.XXXXXX")" || return 1
-
-    if ! {
-        printf '%s\n' "${fingerprint}"
-        printf 'UPDATED_AT=%s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    } > "${tmp_state_file}"; then
-        rm -f "${tmp_state_file}"
-        return 1
+    local interval="${GOTOHP_PROGRESS_LOG_INTERVAL:-60}"
+    if ! [[ "${interval}" =~ ^[0-9]+$ ]]; then
+        interval="60"
     fi
 
-    if ! mv -f "${tmp_state_file}" "${state_file}"; then
-        rm -f "${tmp_state_file}"
-        return 1
+    local progress_file upload_log_file
+    progress_file=$(mktemp /tmp/gotohp-progress.XXXXXX.json) || progress_file="/tmp/gotohp-progress.$$.json"
+    upload_log_file=$(mktemp /tmp/gotohp-upload.XXXXXX.log) || upload_log_file="/tmp/gotohp-upload.$$.log"
+
+    if [[ "${interval}" == "0" ]]; then
+        if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
+            gotohp upload "${source}" "$@"
+        else
+            gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1
+        fi
+        rm -f "${progress_file}" "${upload_log_file}"
+        return $?
     fi
+
+    local upload_pid elapsed rc
+
+    if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
+        gotohp upload "${source}" "$@" &
+    else
+        gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1 &
+    fi
+    upload_pid=$!
+    elapsed=0
+
+    while kill -0 "${upload_pid}" 2>/dev/null; do
+        sleep 1
+        elapsed=$((elapsed + 1))
+        if (( elapsed >= interval )); then
+            log_upload_progress "${source}" "${progress_file}"
+            elapsed=0
+        fi
+    done
+
+    wait "${upload_pid}"
+    rc=$?
+    log_upload_progress "${source}" "${progress_file}" "final"
+    rm -f "${progress_file}" "${upload_log_file}"
+    return ${rc}
 }
+
+exec >/proc/1/fd/1 2>&1
 
 color blue "Running backup at $(date +"%Y-%m-%d %H:%M:%S %Z")"
 
@@ -330,19 +332,6 @@ if [[ "${#SOURCE_PATHS[@]}" -eq 0 ]]; then
 fi
 
 HAS_ERROR="FALSE"
-STATE_UPDATES=()
-SKIP_UNCHANGED_STATE_DIR="${GOTOHP_SKIP_UNCHANGED_STATE_DIR:-/config/gotohp-wrapper/skip-unchanged/v1}"
-
-########################################
-# Clean up old skip-unchanged state files to prevent directory bloat.
-# Removes state files not accessed in the last 60 days.
-########################################
-function cleanup_old_state_files() {
-    [[ ! -d "${SKIP_UNCHANGED_STATE_DIR}" ]] && return 0
-    find "${SKIP_UNCHANGED_STATE_DIR}" -maxdepth 1 -name "*.state" -type f -atime +60 -delete 2>/dev/null || true
-}
-
-cleanup_old_state_files
 
 # Determine which pair indices to process.
 # If PAIR_INDICES is set (comma-separated), process only those pairs.
@@ -370,7 +359,6 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
     fi
 
     build_gotohp_flags "${i}"
-    GOTOHP_EFFECTIVE_SKIP_UNCHANGED=$(echo "${GOTOHP_SKIP_UNCHANGED_LIST[${i}]:-${GOTOHP_SKIP_UNCHANGED}}" | tr '[:lower:]' '[:upper:]')
 
     # When not in recursive mode, gotohp only processes files directly inside
     # SOURCE (not in subdirectories).  Limit the pre-flight search depth to
@@ -379,8 +367,6 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
     if [[ "${GOTOHP_EFFECTIVE_RECURSIVE}" != "TRUE" ]]; then
         FIND_DEPTH_ARGS=("-maxdepth" "1")
     fi
-
-    build_find_prune_args "${GOTOHP_EFFECTIVE_RECURSIVE}" "${GOTOHP_EFFECTIVE_EXCLUDE}"
 
     # Build a find name expression that mirrors gotohp's own extension filter.
     # When the filter is disabled, any regular file counts; otherwise only
@@ -408,7 +394,7 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
 
     # Pre-flight check: distinguish "no files" from a real find failure so that
     # permission errors or unreadable mounts are not silently treated as empty.
-    FIND_OUTPUT="$(find -- "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" "${FIND_PRUNE_ARGS[@]}" -type f "${FIND_NAME_ARGS[@]}" -print -quit 2>&1)"
+    FIND_OUTPUT="$(find -- "${SOURCE}" "${FIND_DEPTH_ARGS[@]}" -type f "${FIND_NAME_ARGS[@]}" -print -quit 2>&1)"
     FIND_STATUS=$?
     if [[ ${FIND_STATUS} -ne 0 ]]; then
         color red "Error scanning source path (find failed), skipping: ${SOURCE}"
@@ -421,45 +407,6 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
         continue
     fi
 
-    SHOULD_TRACK_STATE="FALSE"
-    CURRENT_FINGERPRINT=""
-    CURRENT_STATE_FILE=""
-    if [[ "${GOTOHP_EFFECTIVE_SKIP_UNCHANGED}" == "TRUE" ]]; then
-        if [[ "${GOTOHP_EFFECTIVE_FORCE}" == "TRUE" ]]; then
-            color yellow "Skip-unchanged disabled for this run because GOTOHP_FORCE is TRUE: ${SOURCE}"
-        elif compute_tree_fingerprint "${SOURCE}" "${GOTOHP_EFFECTIVE_RECURSIVE}" "${GOTOHP_EFFECTIVE_EXCLUDE}"; then
-            CURRENT_FINGERPRINT="${TREE_FINGERPRINT}"
-            if build_pair_state_file \
-                "${SOURCE}" \
-                "${ALBUM}" \
-                "${GOTOHP_EFFECTIVE_EMAIL:-}" \
-                "${GOTOHP_EFFECTIVE_RECURSIVE}" \
-                "${GOTOHP_EFFECTIVE_FORCE}" \
-                "${GOTOHP_EFFECTIVE_DELETE}" \
-                "${GOTOHP_EFFECTIVE_DISABLE_FILTER}" \
-                "${GOTOHP_EFFECTIVE_DATE_FROM_FILENAME}" \
-                "${GOTOHP_EFFECTIVE_EXCLUDE}"; then
-                CURRENT_STATE_FILE="${PAIR_STATE_FILE}"
-                SHOULD_TRACK_STATE="TRUE"
-                if [[ -f "${CURRENT_STATE_FILE}" ]]; then
-                    IFS= read -r PREVIOUS_FINGERPRINT < "${CURRENT_STATE_FILE}" || PREVIOUS_FINGERPRINT=""
-                    if [[ "${PREVIOUS_FINGERPRINT}" == "${CURRENT_FINGERPRINT}" ]]; then
-                        color green "Source tree unchanged since previous successful run, skipping gotohp: ${SOURCE}"
-                        continue
-                    fi
-                fi
-                color blue "Source tree changed or no previous clean state found: ${SOURCE}"
-            else
-                color red "Error building skip-unchanged state key, skipping: ${SOURCE}"
-                HAS_ERROR="TRUE"
-                continue
-            fi
-        else
-            HAS_ERROR="TRUE"
-            continue
-        fi
-    fi
-
     UPLOAD_FLAGS=("${GOTOHP_FLAGS[@]}")
     if [[ -n "${ALBUM}" ]]; then
         UPLOAD_FLAGS+=("--album" "${ALBUM}")
@@ -467,20 +414,13 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
 
     color blue "Uploading $(color yellow "[${SOURCE}]") → album $(color yellow "[${ALBUM:-<library root>}]")"
 
-    gotohp upload "${SOURCE}" "${UPLOAD_FLAGS[@]}"
+    run_gotohp_upload_with_progress "${SOURCE}" "${UPLOAD_FLAGS[@]}"
 
     if [[ $? -ne 0 ]]; then
         color red "Upload failed for: ${SOURCE}"
         HAS_ERROR="TRUE"
     else
         color green "Upload complete: ${SOURCE}"
-        if [[ "${SHOULD_TRACK_STATE}" == "TRUE" ]]; then
-            if compute_tree_fingerprint "${SOURCE}" "${GOTOHP_EFFECTIVE_RECURSIVE}" "${GOTOHP_EFFECTIVE_EXCLUDE}"; then
-                STATE_UPDATES+=("${CURRENT_STATE_FILE}" "${TREE_FINGERPRINT}")
-            else
-                HAS_ERROR="TRUE"
-            fi
-        fi
     fi
 done
 
@@ -488,12 +428,5 @@ if [[ "${HAS_ERROR}" == "TRUE" ]]; then
     color red "One or more uploads failed at $(date +"%Y-%m-%d %H:%M:%S %Z")"
     exit 1
 fi
-
-for ((state_i = 0; state_i < ${#STATE_UPDATES[@]}; state_i += 2)); do
-    if ! write_skip_unchanged_state "${STATE_UPDATES[${state_i}]}" "${STATE_UPDATES[$((state_i + 1))]}"; then
-        color red "Failed to persist skip-unchanged state: ${STATE_UPDATES[${state_i}]}"
-        exit 1
-    fi
-done
 
 color green "All uploads completed successfully at $(date +"%Y-%m-%d %H:%M:%S %Z")"

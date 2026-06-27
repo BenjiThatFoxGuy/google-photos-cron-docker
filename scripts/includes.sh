@@ -325,6 +325,17 @@ function init_env() {
     get_env GOTOHP_LOG_LEVEL
     GOTOHP_LOG_LEVEL="${GOTOHP_LOG_LEVEL:-"info"}"
 
+    # GOTOHP_PROGRESS_LOG_INTERVAL — seconds between Docker log progress lines; 0 disables
+    get_env GOTOHP_PROGRESS_LOG_INTERVAL
+    GOTOHP_PROGRESS_LOG_INTERVAL="${GOTOHP_PROGRESS_LOG_INTERVAL:-"60"}"
+    if ! [[ "${GOTOHP_PROGRESS_LOG_INTERVAL}" =~ ^[0-9]+$ ]]; then
+        GOTOHP_PROGRESS_LOG_INTERVAL="60"
+    fi
+
+    # GOTOHP_UPLOAD_RAW_LOGS — pass raw gotohp TUI output through Docker logs (default: FALSE)
+    get_env GOTOHP_UPLOAD_RAW_LOGS
+    GOTOHP_UPLOAD_RAW_LOGS=$(echo "${GOTOHP_UPLOAD_RAW_LOGS:-"FALSE"}" | tr '[:lower:]' '[:upper:]')
+
     # SOURCE_PATH / ALBUM_NAME — single-source shorthand aliases for _0 slots
     get_env SOURCE_PATH
     get_env ALBUM_NAME
@@ -349,6 +360,8 @@ function init_env() {
     color yellow "GOTOHP_SKIP_UNCHANGED: ${GOTOHP_SKIP_UNCHANGED}"
     color yellow "GOTOHP_SKIP_UNCHANGED_STATE_DIR: ${GOTOHP_SKIP_UNCHANGED_STATE_DIR}"
     color yellow "GOTOHP_LOG_LEVEL: ${GOTOHP_LOG_LEVEL}"
+    color yellow "GOTOHP_PROGRESS_LOG_INTERVAL: ${GOTOHP_PROGRESS_LOG_INTERVAL}"
+    color yellow "GOTOHP_UPLOAD_RAW_LOGS: ${GOTOHP_UPLOAD_RAW_LOGS}"
 
     for i in "${!SOURCE_PATHS[@]}"; do
         local ALB="${ALBUM_NAMES[${i}]:-<none>}"

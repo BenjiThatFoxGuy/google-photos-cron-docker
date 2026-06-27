@@ -40,6 +40,7 @@ HANG_TEST_TIMEOUT=10
 #   $11 GOTOHP_SKIP_UNCHANGED_STATE_DIR value (optional; default: test-local)
 #   $12 skip-unchanged pair 0 override (optional; default: "")
 #   $13 skip-unchanged pair 1 override (optional; default: "")
+#   $14 GOTOHP_PROGRESS_LOG_INTERVAL value (optional; default: "60")
 ########################################
 setup_env() {
     local test_name="$1"
@@ -57,6 +58,7 @@ setup_env() {
     local skip_unchanged_state_dir="${11:-${env_dir}/config/skip-unchanged}"
     local pair0_skip_unchanged="${12:-}"
     local pair1_skip_unchanged="${13:-}"
+    local progress_log_interval="${14:-60}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
 
     GOTOHP_CALLS="${env_dir}/gotohp_calls.txt"
@@ -109,6 +111,8 @@ function init_env() {
     GOTOHP_SKIP_UNCHANGED="${skip_unchanged}"
     GOTOHP_SKIP_UNCHANGED_STATE_DIR="${skip_unchanged_state_dir}"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_PROGRESS_LOG_INTERVAL="${progress_log_interval}"
+    GOTOHP_UPLOAD_RAW_LOGS="FALSE"
     GOTOHP_EMAIL="${global_email}"
     CRON_OVERLAP="${cron_overlap}"
 }
@@ -613,6 +617,8 @@ function init_env() {
     GOTOHP_SKIP_UNCHANGED="FALSE"
     GOTOHP_SKIP_UNCHANGED_STATE_DIR="${env_dir}/config/skip-unchanged"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_PROGRESS_LOG_INTERVAL="60"
+    GOTOHP_UPLOAD_RAW_LOGS="FALSE"
     GOTOHP_EMAIL=""
     CRON_OVERLAP="${cron_overlap}"
 }
@@ -1040,6 +1046,107 @@ else
     fail "Test 34: expected pair0=1 upload and pair1=2 uploads, got pair0=${UPLOAD0_COUNT}, pair1=${UPLOAD1_COUNT}"
     cat "${SCRATCH}/t34_run1.txt"
     cat "${SCRATCH}/t34_run2.txt"
+fi
+
+########################################
+# Tests 35–36: Docker log progress summaries from gotohp progress JSON
+########################################
+echo "--- Tests 35–36: Docker log progress summaries ---"
+
+# Test 35: progress JSON is polled and summarized while gotohp is running.
+EMPTY35="${SCRATCH}/t35_empty"
+FILES35="${SCRATCH}/t35_files"
+PROGRESS35="${SCRATCH}/t35_progress.json"
+mkdir -p "${EMPTY35}" "${FILES35}"
+echo "photo" > "${FILES35}/photo.jpg"
+
+setup_env "t35" "${EMPTY35}" "${FILES35}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "1"
+cat > "${SCRATCH}/t35/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"running","total_files":5,"total_bytes":1000,"completed":2,"failed":1,"bytes_uploaded":400,"threads":[{"worker_id":0,"status":"hashing","file_name":"photo.jpg"}],"recent_results":[]}' > "${PROGRESS35}"
+    sleep 2
+    printf '%s' '{"state":"complete","total_files":5,"total_bytes":1000,"completed":4,"failed":1,"bytes_uploaded":1000,"threads":[],"recent_results":[]}' > "${PROGRESS35}"
+fi
+EOF
+chmod +x "${SCRATCH}/t35/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS35}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t35_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 35: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "Upload progress .*2/5 succeeded, 1 failed, 400/1000 bytes uploaded" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: periodic upload progress summary was not logged"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "Upload final .*4/5 succeeded, 1 failed, 1000/1000 bytes uploaded" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: final upload progress summary was not logged"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "workers: \[0\] hashing: photo.jpg" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: worker status was not included in periodic progress summary"
+    cat "${SCRATCH}/t35_out.txt"
+else
+    pass "Test 35: periodic and final progress summaries logged"
+fi
+
+# Test 36: GOTOHP_PROGRESS_LOG_INTERVAL=0 disables wrapper progress summaries.
+EMPTY36="${SCRATCH}/t36_empty"
+FILES36="${SCRATCH}/t36_files"
+PROGRESS36="${SCRATCH}/t36_progress.json"
+mkdir -p "${EMPTY36}" "${FILES36}"
+echo "photo" > "${FILES36}/photo.jpg"
+
+setup_env "t36" "${EMPTY36}" "${FILES36}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "0"
+cat > "${SCRATCH}/t36/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"complete","total_files":5,"total_bytes":1000,"completed":5,"failed":0,"bytes_uploaded":1000}' > "${PROGRESS36}"
+fi
+EOF
+chmod +x "${SCRATCH}/t36/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS36}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t36_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 36: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t36_out.txt"
+elif grep -q "Upload progress\|Upload final" "${SCRATCH}/t36_out.txt" 2>/dev/null; then
+    fail "Test 36: progress summaries should be disabled when interval is 0"
+    cat "${SCRATCH}/t36_out.txt"
+else
+    pass "Test 36: progress summaries disabled with interval 0"
+fi
+
+# Test 36b: raw gotohp output is suppressed by default.
+EMPTY36B="${SCRATCH}/t36b_empty"
+FILES36B="${SCRATCH}/t36b_files"
+PROGRESS36B="${SCRATCH}/t36b_progress.json"
+mkdir -p "${EMPTY36B}" "${FILES36B}"
+echo "photo" > "${FILES36B}/photo.jpg"
+
+setup_env "t36b" "${EMPTY36B}" "${FILES36B}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "1"
+cat > "${SCRATCH}/t36b/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"complete","total_files":1,"total_bytes":1,"completed":1,"failed":0,"bytes_uploaded":1}' > "${PROGRESS36B}"
+    printf '\n\nRAW_TUI_SPAM\n\n'
+fi
+EOF
+chmod +x "${SCRATCH}/t36b/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS36B}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t36b_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 36b: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t36b_out.txt"
+elif grep -q "RAW_TUI_SPAM" "${SCRATCH}/t36b_out.txt" 2>/dev/null; then
+    fail "Test 36b: raw gotohp output should be suppressed by default"
+    cat "${SCRATCH}/t36b_out.txt"
+else
+    pass "Test 36b: raw gotohp output suppressed by default"
 fi
 
 ########################################
