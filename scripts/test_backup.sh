@@ -35,6 +35,12 @@ HANG_TEST_TIMEOUT=10
 #   $6  email for pair 1 override (optional; default: "")
 #   $7  global GOTOHP_EMAIL value (optional; default: "")
 #   $8  CRON_OVERLAP value (optional; default: "QUEUE")
+#   $9  global GOTOHP_EXCLUDE value (optional; default: "")
+#   $10 global GOTOHP_SKIP_UNCHANGED value (optional; default: "FALSE")
+#   $11 GOTOHP_SKIP_UNCHANGED_STATE_DIR value (optional; default: test-local)
+#   $12 skip-unchanged pair 0 override (optional; default: "")
+#   $13 skip-unchanged pair 1 override (optional; default: "")
+#   $14 GOTOHP_PROGRESS_LOG_INTERVAL value (optional; default: "60")
 ########################################
 setup_env() {
     local test_name="$1"
@@ -45,8 +51,14 @@ setup_env() {
     local pair1_email="${6:-}"
     local global_email="${7:-}"
     local cron_overlap="${8:-QUEUE}"
+    local gotohp_exclude="${9:-}"
+    local skip_unchanged="${10:-FALSE}"
 
     local env_dir="${SCRATCH}/${test_name}"
+    local skip_unchanged_state_dir="${11:-${env_dir}/config/skip-unchanged}"
+    local pair0_skip_unchanged="${12:-}"
+    local pair1_skip_unchanged="${13:-}"
+    local progress_log_interval="${14:-60}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
 
     GOTOHP_CALLS="${env_dir}/gotohp_calls.txt"
@@ -83,6 +95,8 @@ function init_env() {
     GOTOHP_DELETE_LIST=("" "")
     GOTOHP_DISABLE_FILTER_LIST=("" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "")
+    GOTOHP_EXCLUDE_LIST=("" "")
+    GOTOHP_SKIP_UNCHANGED_LIST=("${pair0_skip_unchanged}" "${pair1_skip_unchanged}")
     GOTOHP_LOG_LEVEL_LIST=("" "")
     GOTOHP_CREDS_LIST=("" "")
     GOTOHP_EMAIL_LIST=("${pair0_email}" "${pair1_email}")
@@ -93,7 +107,12 @@ function init_env() {
     GOTOHP_DELETE="FALSE"
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
+    GOTOHP_EXCLUDE="${gotohp_exclude}"
+    GOTOHP_SKIP_UNCHANGED="${skip_unchanged}"
+    GOTOHP_SKIP_UNCHANGED_STATE_DIR="${skip_unchanged_state_dir}"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_PROGRESS_LOG_INTERVAL="${progress_log_interval}"
+    GOTOHP_UPLOAD_RAW_LOGS="FALSE"
     GOTOHP_EMAIL="${global_email}"
     CRON_OVERLAP="${cron_overlap}"
 }
@@ -582,6 +601,8 @@ function init_env() {
     GOTOHP_DELETE_LIST=("" "" "")
     GOTOHP_DISABLE_FILTER_LIST=("" "" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "" "")
+    GOTOHP_EXCLUDE_LIST=("" "" "")
+    GOTOHP_SKIP_UNCHANGED_LIST=("" "" "")
     GOTOHP_LOG_LEVEL_LIST=("" "" "")
     GOTOHP_CREDS_LIST=("" "" "")
     GOTOHP_EMAIL_LIST=("" "" "")
@@ -592,7 +613,12 @@ function init_env() {
     GOTOHP_DELETE="FALSE"
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
+    GOTOHP_EXCLUDE=""
+    GOTOHP_SKIP_UNCHANGED="FALSE"
+    GOTOHP_SKIP_UNCHANGED_STATE_DIR="${env_dir}/config/skip-unchanged"
     GOTOHP_LOG_LEVEL="info"
+    GOTOHP_PROGRESS_LOG_INTERVAL="60"
+    GOTOHP_UPLOAD_RAW_LOGS="FALSE"
     GOTOHP_EMAIL=""
     CRON_OVERLAP="${cron_overlap}"
 }
@@ -846,6 +872,281 @@ if cron_is_interval_with_arg "0 2 * * *"; then
     fail "Test 28: cron_is_interval('0 2 * * *') should NOT be interval but was detected as one"
 else
     pass "Test 28: cron_is_interval('0 2 * * *') correctly identified as non-interval"
+fi
+
+########################################
+# Tests 29–34: GOTOHP_SKIP_UNCHANGED persistent tree fingerprints
+########################################
+echo "--- Tests 29–34: GOTOHP_SKIP_UNCHANGED behaviour ---"
+
+# Test 29: default disabled — repeated unchanged runs still invoke gotohp.
+EMPTY29="${SCRATCH}/t29_empty"
+FILES29="${SCRATCH}/t29_files"
+mkdir -p "${EMPTY29}" "${FILES29}"
+echo "photo" > "${FILES29}/photo.jpg"
+
+setup_env "t29" "${EMPTY29}" "${FILES29}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t29_run1.txt" 2>&1 || RC=$?
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t29_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES29}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 29: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t29_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+    pass "Test 29: skip-unchanged disabled by default — unchanged source uploaded twice"
+else
+    fail "Test 29: expected 2 uploads with skip-unchanged disabled, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t29_run1.txt"
+    cat "${SCRATCH}/t29_run2.txt"
+fi
+
+# Test 30: enabled — first run uploads, second unchanged run skips gotohp.
+EMPTY30="${SCRATCH}/t30_empty"
+FILES30="${SCRATCH}/t30_files"
+STATE30="${SCRATCH}/t30_state"
+mkdir -p "${EMPTY30}" "${FILES30}"
+echo "photo" > "${FILES30}/photo.jpg"
+
+setup_env "t30" "${EMPTY30}" "${FILES30}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE30}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t30_run1.txt" 2>&1 || RC=$?
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t30_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES30}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 30: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t30_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -ne 1 ]]; then
+    fail "Test 30: expected exactly 1 upload after second unchanged run, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t30_run1.txt"
+    cat "${SCRATCH}/t30_run2.txt"
+elif ! grep -q "Source tree unchanged" "${SCRATCH}/t30_run2.txt" 2>/dev/null; then
+    fail "Test 30: second run did not log unchanged skip"
+    cat "${SCRATCH}/t30_run2.txt"
+else
+    pass "Test 30: enabled skip-unchanged uploads once, then skips unchanged source"
+fi
+
+# Test 31: enabled — source metadata/content change triggers another upload.
+EMPTY31="${SCRATCH}/t31_empty"
+FILES31="${SCRATCH}/t31_files"
+STATE31="${SCRATCH}/t31_state"
+mkdir -p "${EMPTY31}" "${FILES31}"
+echo "photo" > "${FILES31}/photo.jpg"
+
+setup_env "t31" "${EMPTY31}" "${FILES31}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE31}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t31_run1.txt" 2>&1 || RC=$?
+sleep 1
+printf 'edited\n' >> "${FILES31}/photo.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t31_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES31}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 31: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t31_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+    pass "Test 31: changed source uploaded again"
+else
+    fail "Test 31: expected 2 uploads after source change, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t31_run1.txt"
+    cat "${SCRATCH}/t31_run2.txt"
+fi
+
+# Test 32: excluded directory changes do not affect skip-unchanged fingerprint.
+EMPTY32="${SCRATCH}/t32_empty"
+FILES32="${SCRATCH}/t32_files"
+STATE32="${SCRATCH}/t32_state"
+mkdir -p "${EMPTY32}" "${FILES32}/@eaDir"
+echo "photo" > "${FILES32}/photo.jpg"
+echo "cache" > "${FILES32}/@eaDir/cache.jpg"
+
+setup_env "t32" "${EMPTY32}" "${FILES32}" "TRUE" "" "" "" "QUEUE" "@eaDir" "TRUE" "${STATE32}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t32_run1.txt" 2>&1 || RC=$?
+sleep 1
+echo "changed cache" > "${FILES32}/@eaDir/cache2.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t32_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES32}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 32: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t32_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -ne 1 ]]; then
+    fail "Test 32: excluded dir change should not trigger upload, got ${UPLOAD_COUNT} uploads"
+    cat "${SCRATCH}/t32_run1.txt"
+    cat "${SCRATCH}/t32_run2.txt"
+else
+    pass "Test 32: excluded directory changes ignored by fingerprint"
+fi
+
+# Test 33: failed gotohp run does not persist clean state; next run uploads again.
+EMPTY33="${SCRATCH}/t33_empty"
+FILES33="${SCRATCH}/t33_files"
+STATE33="${SCRATCH}/t33_state"
+mkdir -p "${EMPTY33}" "${FILES33}"
+echo "photo" > "${FILES33}/photo.jpg"
+
+setup_env "t33" "${EMPTY33}" "${FILES33}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE33}"
+cat > "${SCRATCH}/t33/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    exit 1
+fi
+EOF
+chmod +x "${SCRATCH}/t33/bin/gotohp"
+
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t33_run1.txt" 2>&1 || RC=$?
+if [[ $RC -eq 0 ]]; then
+    fail "Test 33: first backup should fail when gotohp upload fails"
+    cat "${SCRATCH}/t33_run1.txt"
+else
+    cat > "${SCRATCH}/t33/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+EOF
+    chmod +x "${SCRATCH}/t33/bin/gotohp"
+    RC=0
+    PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t33_run2.txt" 2>&1 || RC=$?
+    UPLOAD_COUNT=$(grep -c "upload ${FILES33}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+    if [[ $RC -ne 0 ]]; then
+        fail "Test 33: second backup exited with code ${RC}"
+        cat "${SCRATCH}/t33_run2.txt"
+    elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+        pass "Test 33: failed run did not mark source clean; next run uploaded again"
+    else
+        fail "Test 33: expected failed run plus retry upload, got ${UPLOAD_COUNT} uploads"
+        cat "${SCRATCH}/t33_run1.txt"
+        cat "${SCRATCH}/t33_run2.txt"
+    fi
+fi
+
+# Test 34: multi-source — unchanged pair skips while changed pair uploads.
+FILES34_0="${SCRATCH}/t34_pair0"
+FILES34_1="${SCRATCH}/t34_pair1"
+STATE34="${SCRATCH}/t34_state"
+mkdir -p "${FILES34_0}" "${FILES34_1}"
+echo "photo" > "${FILES34_0}/photo.jpg"
+echo "photo" > "${FILES34_1}/photo.jpg"
+
+setup_env "t34" "${FILES34_0}" "${FILES34_1}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE34}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t34_run1.txt" 2>&1 || RC=$?
+sleep 1
+printf 'edited\n' >> "${FILES34_1}/photo.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t34_run2.txt" 2>&1 || RC=$?
+UPLOAD0_COUNT=$(grep -c "upload ${FILES34_0}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+UPLOAD1_COUNT=$(grep -c "upload ${FILES34_1}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 34: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t34_run2.txt"
+elif [[ "${UPLOAD0_COUNT}" -eq 1 && "${UPLOAD1_COUNT}" -eq 2 ]]; then
+    pass "Test 34: unchanged pair skipped; changed pair uploaded"
+else
+    fail "Test 34: expected pair0=1 upload and pair1=2 uploads, got pair0=${UPLOAD0_COUNT}, pair1=${UPLOAD1_COUNT}"
+    cat "${SCRATCH}/t34_run1.txt"
+    cat "${SCRATCH}/t34_run2.txt"
+fi
+
+########################################
+# Tests 35–36: Docker log progress summaries from gotohp progress JSON
+########################################
+echo "--- Tests 35–36: Docker log progress summaries ---"
+
+# Test 35: progress JSON is polled and summarized while gotohp is running.
+EMPTY35="${SCRATCH}/t35_empty"
+FILES35="${SCRATCH}/t35_files"
+PROGRESS35="${SCRATCH}/t35_progress.json"
+mkdir -p "${EMPTY35}" "${FILES35}"
+echo "photo" > "${FILES35}/photo.jpg"
+
+setup_env "t35" "${EMPTY35}" "${FILES35}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "1"
+cat > "${SCRATCH}/t35/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"running","total_files":5,"total_bytes":1000,"completed":2,"failed":1,"bytes_uploaded":400,"threads":[{"worker_id":0,"status":"hashing","file_name":"photo.jpg"}],"recent_results":[]}' > "${PROGRESS35}"
+    sleep 2
+    printf '%s' '{"state":"complete","total_files":5,"total_bytes":1000,"completed":4,"failed":1,"bytes_uploaded":1000,"threads":[],"recent_results":[]}' > "${PROGRESS35}"
+fi
+EOF
+chmod +x "${SCRATCH}/t35/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS35}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t35_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 35: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "Upload progress .*2/5 succeeded, 1 failed, 400/1000 bytes uploaded" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: periodic upload progress summary was not logged"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "Upload final .*4/5 succeeded, 1 failed, 1000/1000 bytes uploaded" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: final upload progress summary was not logged"
+    cat "${SCRATCH}/t35_out.txt"
+elif ! grep -q "workers: \[0\] hashing: photo.jpg" "${SCRATCH}/t35_out.txt" 2>/dev/null; then
+    fail "Test 35: worker status was not included in periodic progress summary"
+    cat "${SCRATCH}/t35_out.txt"
+else
+    pass "Test 35: periodic and final progress summaries logged"
+fi
+
+# Test 36: GOTOHP_PROGRESS_LOG_INTERVAL=0 disables wrapper progress summaries.
+EMPTY36="${SCRATCH}/t36_empty"
+FILES36="${SCRATCH}/t36_files"
+PROGRESS36="${SCRATCH}/t36_progress.json"
+mkdir -p "${EMPTY36}" "${FILES36}"
+echo "photo" > "${FILES36}/photo.jpg"
+
+setup_env "t36" "${EMPTY36}" "${FILES36}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "0"
+cat > "${SCRATCH}/t36/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"complete","total_files":5,"total_bytes":1000,"completed":5,"failed":0,"bytes_uploaded":1000}' > "${PROGRESS36}"
+fi
+EOF
+chmod +x "${SCRATCH}/t36/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS36}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t36_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 36: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t36_out.txt"
+elif grep -q "Upload progress\|Upload final" "${SCRATCH}/t36_out.txt" 2>/dev/null; then
+    fail "Test 36: progress summaries should be disabled when interval is 0"
+    cat "${SCRATCH}/t36_out.txt"
+else
+    pass "Test 36: progress summaries disabled with interval 0"
+fi
+
+# Test 36b: raw gotohp output is suppressed by default.
+EMPTY36B="${SCRATCH}/t36b_empty"
+FILES36B="${SCRATCH}/t36b_files"
+PROGRESS36B="${SCRATCH}/t36b_progress.json"
+mkdir -p "${EMPTY36B}" "${FILES36B}"
+echo "photo" > "${FILES36B}/photo.jpg"
+
+setup_env "t36b" "${EMPTY36B}" "${FILES36B}" "TRUE" "" "" "" "QUEUE" "" "FALSE" "" "" "" "1"
+cat > "${SCRATCH}/t36b/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    printf '%s' '{"state":"complete","total_files":1,"total_bytes":1,"completed":1,"failed":0,"bytes_uploaded":1}' > "${PROGRESS36B}"
+    printf '\n\nRAW_TUI_SPAM\n\n'
+fi
+EOF
+chmod +x "${SCRATCH}/t36b/bin/gotohp"
+
+RC=0
+GOTOHP_PROGRESS_FILE="${PROGRESS36B}" PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t36b_out.txt" 2>&1 || RC=$?
+if [[ $RC -ne 0 ]]; then
+    fail "Test 36b: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t36b_out.txt"
+elif grep -q "RAW_TUI_SPAM" "${SCRATCH}/t36b_out.txt" 2>/dev/null; then
+    fail "Test 36b: raw gotohp output should be suppressed by default"
+    cat "${SCRATCH}/t36b_out.txt"
+else
+    pass "Test 36b: raw gotohp output suppressed by default"
 fi
 
 ########################################
