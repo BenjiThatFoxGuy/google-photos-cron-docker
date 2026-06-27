@@ -1,564 +1,600 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>google-photos-cron-docker</title>
+  <title>gotohp · control panel</title>
   <meta name="docker-build-branch" content="__DOCKER_BRANCH__">
   <meta name="docker-build-commit" content="__DOCKER_COMMIT__">
+  <script>
+    // Apply saved theme + accent before first paint to avoid a flash.
+    (function () {
+      try {
+        var t = localStorage.getItem('m3-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        var h = localStorage.getItem('m3-hue');
+        if (h) document.documentElement.style.setProperty('--seed-hue', h);
+      } catch (e) {}
+    })();
+  </script>
   <style>
-    :root {
-      --bg:           #121318;
-      --panel:        #1d1b20;
-      --panel-hi:     #24212a;
-      --border:       #49454f;
-      --text:         #e6e0e9;
-      --muted:        #cac4d0;
-      --accent:       #d0bcff;
-      --accent-dim:   #b69df8;
-      --accent-text:  #381e72;
-      --success:      #79d99a;
-      --warn:         #f2c15d;
-      --danger:       #ffb4ab;
-      --mono-bg:      #15121a;
-      --pill-r:       999px;
-      --radius:       16px;
-      --shadow:       0 1px 2px rgba(0,0,0,.3);
+    /* ══════════════ Material 3 design tokens (OKLCH) ══════════════
+       Generated from source colour #82b1ff via @tw-material/theme,
+       matching the bdrive-ui palette. Stored as full colour values so
+       the accent hue can be re-tinted at runtime. */
+    :root[data-theme="dark"] {
+      --c-background:                 oklch(18.687% 0.01068 268.11);
+      --c-on-background:              oklch(91.482% 0.00943 286.21);
+      --c-surface:                    oklch(18.687% 0.01068 268.11);
+      --c-surface-dim:                oklch(18.687% 0.01068 268.11);
+      --c-surface-bright:             oklch(34.455% 0.00912 268.4);
+      --c-surface-container-lowest:   oklch(16.395% 0.01106 268.01);
+      --c-surface-container-low:      oklch(22.503% 0.00902 255.61);
+      --c-surface-container:          oklch(24.211% 0.00885 255.59);
+      --c-surface-container-high:     oklch(28.502% 0.00957 268.34);
+      --c-surface-container-highest:  oklch(32.894% 0.00922 268.38);
+      --c-on-surface:                 oklch(91.482% 0.00943 286.21);
+      --c-surface-variant:            oklch(39.714% 0.01812 264.34);
+      --c-on-surface-variant:         oklch(82.706% 0.01729 271.2);
+      --c-inverse-surface:            oklch(91.482% 0.00943 286.21);
+      --c-inverse-on-surface:         oklch(30.917% 0.00937 268.36);
+      --c-outline:                    oklch(65.61% 0.01731 266.22);
+      --c-outline-variant:            oklch(39.714% 0.01812 264.34);
+      --c-primary:                    oklch(86.448% 0.06628 var(--seed-hue, 263.31));
+      --c-on-primary:                 oklch(31.329% 0.10217 var(--seed-hue, 254.72));
+      --c-primary-container:          oklch(73.666% 0.12462 var(--seed-hue, 260.16));
+      --c-on-primary-container:       oklch(23.887% 0.07891 var(--seed-hue, 255.09));
+      --c-inverse-primary:            oklch(48.469% 0.12875 var(--seed-hue, 256.99));
+      --c-surface-tint:               oklch(82.749% 0.08569 var(--seed-hue, 262.68));
+      --c-secondary:                  oklch(82.794% 0.05139 var(--seed-hue, 264.24));
+      --c-on-secondary:               oklch(31.215% 0.05381 var(--seed-hue, 259.35));
+      --c-secondary-container:        oklch(35.935% 0.05321 var(--seed-hue, 261.22));
+      --c-on-secondary-container:     oklch(85.924% 0.0522 var(--seed-hue, 264.78));
+      --c-tertiary:                   oklch(87.871% 0.10739 324.38);
+      --c-on-tertiary:                oklch(32.61% 0.12839 320.95);
+      --c-tertiary-container:         oklch(75.219% 0.13132 323.59);
+      --c-on-tertiary-container:      oklch(25.614% 0.1227 320.34);
+      --c-error:                      oklch(83.83% 0.08908 26.757);
+      --c-on-error:                   oklch(32.75% 0.13359 27.32);
+      --c-error-container:            oklch(41.706% 0.17015 27.379);
+      --c-on-error-container:         oklch(91.825% 0.04177 25.226);
+      --c-success:                    oklch(84% 0.13 155);
+      --c-success-container:          oklch(38% 0.09 155);
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 4px 12px rgba(0,0,0,.25);
     }
-    *, *::before, *::after { box-sizing: border-box; }
+    :root[data-theme="light"] {
+      --c-background:                 oklch(98.382% 0.00794 286.25);
+      --c-on-background:              oklch(22.503% 0.00902 255.61);
+      --c-surface:                    oklch(98.382% 0.00794 286.25);
+      --c-surface-dim:                oklch(88.735% 0.00951 286.2);
+      --c-surface-bright:             oklch(98.382% 0.00794 286.25);
+      --c-surface-container-lowest:   oklch(100% 0 0);
+      --c-surface-container-low:      oklch(96.615% 0.0093 286.22);
+      --c-surface-container:          oklch(94.811% 0.00935 286.22);
+      --c-surface-container-high:     oklch(93.196% 0.00814 278.63);
+      --c-surface-container-highest:  oklch(91.482% 0.00943 286.21);
+      --c-on-surface:                 oklch(22.503% 0.00902 255.61);
+      --c-surface-variant:            oklch(91.432% 0.01792 275.63);
+      --c-on-surface-variant:         oklch(39.714% 0.01812 264.34);
+      --c-inverse-surface:            oklch(30.917% 0.00937 268.36);
+      --c-inverse-on-surface:         oklch(95.714% 0.00933 286.22);
+      --c-outline:                    oklch(56.957% 0.01756 269.84);
+      --c-outline-variant:            oklch(82.706% 0.01729 271.2);
+      --c-primary:                    oklch(48.469% 0.12875 var(--seed-hue, 256.99));
+      --c-on-primary:                 oklch(100% 0 0);
+      --c-primary-container:          oklch(78.971% 0.10628 var(--seed-hue, 261.23));
+      --c-on-primary-container:       oklch(29.812% 0.09877 var(--seed-hue, 255.17));
+      --c-inverse-primary:            oklch(82.749% 0.08569 var(--seed-hue, 262.68));
+      --c-surface-tint:               oklch(48.469% 0.12875 var(--seed-hue, 256.99));
+      --c-secondary:                  oklch(48.363% 0.05294 var(--seed-hue, 261.59));
+      --c-on-secondary:               oklch(100% 0 0);
+      --c-secondary-container:        oklch(90.249% 0.04688 var(--seed-hue, 265.49));
+      --c-on-secondary-container:     oklch(39.352% 0.05364 var(--seed-hue, 261.93));
+      --c-tertiary:                   oklch(49.787% 0.12852 322.4);
+      --c-on-tertiary:                oklch(100% 0 0);
+      --c-tertiary-container:         oklch(80.155% 0.13302 323.64);
+      --c-on-tertiary-container:      oklch(31.19% 0.12868 320.93);
+      --c-error:                      oklch(50.603% 0.19265 27.702);
+      --c-on-error:                   oklch(100% 0 0);
+      --c-error-container:            oklch(91.825% 0.04177 25.226);
+      --c-on-error-container:         oklch(23.602% 0.09624 27.191);
+      --c-success:                    oklch(52% 0.15 155);
+      --c-success-container:          oklch(90% 0.07 155);
+      --shadow: 0 1px 2px rgba(0,0,0,.12), 0 4px 12px rgba(0,0,0,.08);
+    }
+
+    * , *::before, *::after { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      margin: 0; padding: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: "Roboto Flex", "Noto Sans", system-ui, sans-serif;
+      margin: 0;
+      background: var(--c-background);
+      color: var(--c-on-surface);
+      font-family: "Roboto Flex", Rubik, system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
       font-size: 14px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
+    h1, h2, h3 { margin: 0; font-weight: 500; }
+    .ic { width: 24px; height: 24px; fill: currentColor; flex-shrink: 0; }
+    .ic-sm { width: 18px; height: 18px; }
 
-    /* ── layout ── */
-    .shell { display: flex; min-height: 100vh; }
+    /* ── App shell: navigation rail + main column ── */
+    .app { display: grid; grid-template-columns: 88px 1fr; min-height: 100vh; }
 
-    nav {
-      width: 200px; flex-shrink: 0;
-      background: color-mix(in srgb, var(--panel) 92%, #000);
-      border-right: 1px solid color-mix(in srgb, var(--border) 80%, #000);
-      display: flex; flex-direction: column;
-      padding: 1rem 0;
+    .rail {
+      background: var(--c-surface);
+      display: flex; flex-direction: column; align-items: center;
+      padding: 12px 0; gap: 8px;
       position: sticky; top: 0; height: 100vh;
-      overflow-y: auto;
     }
-    .nav-logo {
-      padding: 0 1rem 1rem;
-      font-weight: 700; font-size: 0.95rem; letter-spacing: 0.3px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 0.5rem;
+    .rail-logo {
+      width: 48px; height: 48px; border-radius: 16px;
+      display: grid; place-items: center; margin-bottom: 8px;
+      background: var(--c-primary-container); color: var(--c-on-primary-container);
     }
-    .nav-logo span { color: var(--muted); font-weight: 400; font-size: 0.8rem; display: block; }
-    nav a {
-      display: flex; align-items: center; gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      color: var(--muted); text-decoration: none; font-size: 0.88rem;
-      border-left: 3px solid transparent;
-      cursor: pointer;
+    .rail-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; width: 100%; align-items: center; }
+    .rail-item {
+      appearance: none; border: none; background: none; cursor: pointer;
+      width: 64px; padding: 4px 0; border-radius: 16px;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      color: var(--c-on-surface-variant); font-size: 11px; font-weight: 500;
+      font-family: inherit;
     }
-    nav a.active, nav a:hover {
-      color: var(--text);
-      border-left-color: var(--accent);
-      background: color-mix(in srgb, var(--accent) 20%, transparent);
+    .rail-item .rail-icon {
+      width: 56px; height: 32px; border-radius: 16px;
+      display: grid; place-items: center; transition: background .15s ease;
+      color: var(--c-on-surface-variant);
     }
-    .nav-section { padding: 0.6rem 1rem 0.25rem; font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .rail-item:hover .rail-icon { background: color-mix(in oklab, var(--c-on-surface) 8%, transparent); }
+    .rail-item.active { color: var(--c-on-surface); }
+    .rail-item.active .rail-icon { background: var(--c-secondary-container); color: var(--c-on-secondary-container); }
+    .rail-foot { display: flex; flex-direction: column; gap: 4px; width: 100%; align-items: center; }
 
-    main { flex: 1; padding: 1.25rem; overflow-x: hidden; }
+    .main { display: flex; flex-direction: column; min-width: 0; }
 
-    .page { display: none; }
-    .page.active { display: block; }
+    /* ── Top app bar ── */
+    .appbar {
+      position: sticky; top: 0; z-index: 20;
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 24px;
+      background: color-mix(in oklab, var(--c-background) 86%, transparent);
+      backdrop-filter: blur(12px);
+    }
+    .appbar-title { flex: 1; min-width: 0; }
+    .appbar-title h1 { font-size: 22px; letter-spacing: -0.2px; }
+    .appbar-title p { margin: 2px 0 0; color: var(--c-on-surface-variant); font-size: 13px; }
+    .appbar-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
 
-    /* ── common pieces ── */
-    h2 { margin: 0 0 1rem; font-size: 1rem; font-weight: 700; }
-    h3 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; color: var(--muted); }
-
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1rem;
-      margin-bottom: 0.85rem;
-    }
-
-    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; margin-bottom: 0.85rem; }
-    .stat-card {
-      background: var(--panel-hi);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 0.85rem 1rem;
-    }
-    .stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
-    .stat-card .value { font-size: 1.15rem; font-weight: 700; margin-top: 0.2rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-    .pill {
-      display: inline-flex; align-items: center;
-      padding: 0.18rem 0.6rem;
-      border-radius: var(--pill-r);
-      font-size: 0.75rem; font-weight: 700; letter-spacing: 0.3px;
-      border: 1px solid var(--border);
-    }
-    .pill.idle     { background: #1d2430; color: #94a3b8; }
-    .pill.running  { background: #3a2f14; color: #fcd34d; border-color: #92400e; }
-    .pill.complete { background: #14261e; color: #86efac; border-color: #166534; }
-    .pill.failed   { background: #2a1414; color: #fca5a5; border-color: #7f1d1d; }
-    .pill.cancelled{ background: #1f1a2e; color: #c4b5fd; border-color: #4c1d95; }
-    .pill.unknown  { background: #1d2430; color: #94a3b8; }
-
-    /* ── progress bar ── */
-    .prog-wrap { margin-top: 0.75rem; }
-    .prog-track {
-      width: 100%; height: 8px;
-      background: #15131b; border: 1px solid #3a3343;
-      border-radius: var(--pill-r); overflow: hidden;
-    }
-    .prog-fill {
-      height: 100%; width: 0;
-      background: var(--accent);
-      transition: width 300ms ease;
-    }
-    .prog-fill.error { background: var(--danger); }
-    .prog-meta { margin-top: 0.35rem; font-size: 0.8rem; color: var(--muted); }
-
-    /* ── transfers table ── */
-    table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
-    th { text-align: left; padding: 0.4rem 0.6rem; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3px; }
-    td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #1e2730; vertical-align: middle; max-width: 0; }
-    tr:last-child td { border-bottom: none; }
-    .fname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
-    .bytes-bar { width: 90px; }
-    .bytes-track { height: 5px; background: #1e2730; border-radius: var(--pill-r); overflow: hidden; }
-    .bytes-fill  { height: 100%; background: var(--accent); transition: width 200ms linear; }
-    .status-badge {
-      display: inline-block; padding: 0.1rem 0.45rem;
-      border-radius: var(--pill-r); font-size: 0.72rem; font-weight: 700;
-      white-space: nowrap;
-    }
-    .sb-idle       { background: #1d2430; color: #64748b; }
-    .sb-hashing    { background: #1d2430; color: #94a3b8; }
-    .sb-checking   { background: #1f1a2e; color: #a78bfa; }
-    .sb-uploading  { background: #0c2244; color: #93c5fd; }
-    .sb-finalizing { background: #102230; color: #67e8f9; }
-    .sb-completed  { background: #14261e; color: #86efac; }
-    .sb-error      { background: #2a1414; color: #fca5a5; }
-    .empty-row td  { text-align: center; color: var(--muted); padding: 2rem; }
-
-    /* ── history table ── */
-    .res-ok   { color: var(--success); }
-    .res-err  { color: var(--danger); }
-    .res-key  { font-family: monospace; font-size: 0.78rem; color: var(--muted); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
-
-    /* ── log mono ── */
-    .mono {
-      font-family: "Consolas","Liberation Mono","Menlo",monospace;
-      font-size: 0.82rem;
-      background: var(--mono-bg);
-      border: 1px solid #1e2730;
-      border-radius: 8px;
-      padding: 0.75rem;
-      white-space: pre-wrap;
-      max-height: 360px;
-      overflow: auto;
-      margin: 0;
-    }
-
-    /* ── config editor ── */
-    textarea {
-      width: 100%; min-height: 200px; resize: vertical;
-      background: #141218; color: var(--text);
-      border: 1px solid #5a5563; border-radius: 12px;
-      padding: 0.7rem;
-      font-family: "Consolas","Liberation Mono","Menlo",monospace;
-      font-size: 0.84rem;
-    }
-    textarea:focus { outline: none; border-color: var(--accent); }
-    #override-result { margin-top: 0.5rem; }
-
-    .cfg-grid {
-      display: grid;
-      gap: 0.75rem;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      margin-bottom: 0.75rem;
-    }
-    .cfg-kpi {
-      background: #141d2a;
-      border: 1px solid #233247;
-      border-radius: 10px;
-      padding: 0.6rem 0.8rem;
-    }
-    .cfg-kpi-label {
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      font-size: 0.7rem;
-    }
-    .cfg-kpi-value {
-      margin-top: 0.2rem;
-      font-size: 1.1rem;
-      font-weight: 700;
-      color: #dbeafe;
-    }
-    .cfg-builder {
-      border: 1px solid #294162;
-      border-radius: 10px;
-      background: rgba(59,130,246,.06);
-      padding: 0.75rem;
-      margin: 0.5rem 0 0.75rem;
-    }
-    .cfg-base-grid {
-      display: grid;
-      gap: 0.5rem;
-      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-    }
-    .cfg-base-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-    .cfg-base-field label {
-      color: #bfdbfe;
-      font-size: 0.72rem;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-      font-weight: 700;
-    }
-    .cfg-base-field input,
-    .cfg-base-field select {
-      width: 100%;
-      background: #0b121b;
-      color: var(--text);
-      border: 1px solid #31455f;
-      border-radius: 7px;
-      font-size: 0.82rem;
-      padding: 0.45rem 0.5rem;
-    }
-    .cfg-base-field input:focus,
-    .cfg-base-field select:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-    .cfg-builder-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-      flex-wrap: wrap;
-    }
-    .cfg-builder-title {
-      font-size: 0.86rem;
-      font-weight: 700;
-      color: #bfdbfe;
-    }
-    .cfg-pair-list {
-      display: grid;
-      gap: 0.45rem;
-    }
-    .cfg-pair-card {
-      border: 1px solid #27405f;
-      border-radius: 9px;
-      background: #0f1723;
-      padding: 0.55rem;
-      animation: fadeInUp .2s ease;
-    }
-    .cfg-pair-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 0.4rem;
-      gap: 0.5rem;
-    }
-    .cfg-pair-index {
-      font-weight: 700;
-      color: #93c5fd;
-      font-size: 0.78rem;
-      letter-spacing: 0.3px;
-      text-transform: uppercase;
-    }
-    .cfg-row {
-      display: grid;
-      gap: 0.45rem;
-      grid-template-columns: 1.4fr 1fr 0.8fr;
-    }
-    .cfg-row input,
-    .cfg-row select {
-      width: 100%;
-      background: #0b121b;
-      color: var(--text);
-      border: 1px solid #31455f;
-      border-radius: 7px;
-      font-size: 0.82rem;
-      padding: 0.45rem 0.5rem;
-    }
-    .cfg-row input:focus,
-    .cfg-row select:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-    .cfg-empty-note {
-      color: var(--muted);
-      font-size: 0.8rem;
-      padding: 0.25rem;
-    }
-
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(6px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── buttons ── */
+    /* ── Buttons ── */
     .btn {
-      display: inline-flex; align-items: center; gap: 0.35rem;
-      border: 1px solid var(--border);
-      background: #2b2930; color: var(--text);
-      border-radius: 999px; padding: 0.48rem 0.95rem;
-      cursor: pointer; font-size: 0.85rem; font-weight: 600;
-      white-space: nowrap;
+      appearance: none; font-family: inherit; cursor: pointer;
+      height: 40px; padding: 0 20px; border-radius: 999px; border: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 14px; font-weight: 600; white-space: nowrap;
+      transition: filter .15s ease, background .15s ease, box-shadow .15s ease;
     }
-    .btn:hover { border-color: #6e6880; }
-    .btn.primary  { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-    .btn.danger   { background: #4a2322; border-color: #8c3c39; color: #ffdad6; }
-    .btn.warn     { background: #4d3821; border-color: #8a6b44; color: #ffdea6; }
-    .btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; }
+    .btn:hover { filter: brightness(1.06); }
+    .btn:active { filter: brightness(.96); }
+    .btn .ic { width: 18px; height: 18px; }
+    .btn.filled  { background: var(--c-primary); color: var(--c-on-primary); }
+    .btn.tonal   { background: var(--c-secondary-container); color: var(--c-on-secondary-container); }
+    .btn.text    { background: transparent; color: var(--c-primary); padding: 0 12px; }
+    .btn.text:hover { background: color-mix(in oklab, var(--c-primary) 10%, transparent); filter: none; }
+    .btn.outlined{ background: transparent; color: var(--c-primary); border: 1px solid var(--c-outline-variant); }
+    .btn.error   { background: var(--c-error); color: var(--c-on-error); }
+    .icon-btn {
+      appearance: none; border: none; background: transparent; cursor: pointer;
+      width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center;
+      color: var(--c-on-surface-variant);
+    }
+    .icon-btn:hover { background: color-mix(in oklab, var(--c-on-surface) 8%, transparent); }
 
-    /* ── toast ── */
-    #toast {
-      position: fixed; bottom: 1.25rem; right: 1.25rem;
-      background: #1c2530; border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.6rem 1rem;
-      font-size: 0.84rem; pointer-events: none;
-      opacity: 0; transition: opacity 200ms;
-      z-index: 100;
-    }
-    #toast.show { opacity: 1; }
+    /* ── Content + cards ── */
+    .content { padding: 8px 24px 40px; }
+    .page { display: none; animation: fade .25s ease; }
+    .page.active { display: block; }
+    @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
-    /* ── album badge ── */
-    .album-badge {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      padding: 0.3rem 0.75rem; border-radius: var(--pill-r);
-      background: #1f1a2e; border: 1px solid #4c1d95;
-      font-size: 0.82rem; color: #c4b5fd;
+    .card {
+      background: var(--c-surface-container-low);
+      border-radius: 24px; padding: 24px;
+      margin-bottom: 16px;
+    }
+    .section-title { font-size: 15px; font-weight: 600; color: var(--c-on-surface-variant); margin: 24px 4px 12px; }
+
+    /* ── Chips ── */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      height: 30px; padding: 0 12px; border-radius: 8px;
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 12.5px; font-weight: 600; letter-spacing: .2px;
+      background: var(--c-surface-container-high); color: var(--c-on-surface-variant);
+      border: 1px solid var(--c-outline-variant);
+    }
+    .chip[hidden] { display: none; }
+    .chip.running   { background: var(--c-primary-container); color: var(--c-on-primary-container); border-color: transparent; }
+    .chip.complete  { background: var(--c-success-container); color: var(--c-success); border-color: transparent; }
+    .chip.failed    { background: var(--c-error-container); color: var(--c-on-error-container); border-color: transparent; }
+    .chip.cancelled { background: var(--c-tertiary-container); color: var(--c-on-tertiary-container); border-color: transparent; }
+    .chip.album     { background: var(--c-tertiary-container); color: var(--c-on-tertiary-container); border-color: transparent; }
+    .chip .dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; }
+    .chip.running .dot { animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+    /* ── Hero: current upload showcase ── */
+    .hero { display: grid; grid-template-columns: 280px 1fr; gap: 24px; padding: 0; overflow: hidden; }
+    .hero-media {
+      position: relative; background: var(--c-surface-container-high);
+      min-height: 280px; display: grid; place-items: center;
+    }
+    .hero-media img { width: 100%; height: 100%; object-fit: cover; display: block; position: absolute; inset: 0; }
+    .hero-media .placeholder { color: var(--c-on-surface-variant); opacity: .5; z-index: 1; display: none; }
+    .hero-media .placeholder .ic { width: 64px; height: 64px; }
+    .hero-media.no-img img { display: none; }
+    .hero-media.no-img .placeholder.ph-image { display: grid; place-items: center; }
+    .hero-media.is-video img { display: none; }
+    .hero-media.is-video .placeholder.ph-image { display: none; }
+    .hero-media.is-video .placeholder.ph-video { display: grid; place-items: center; }
+    .hero-badge {
+      position: absolute; top: 12px; left: 12px; z-index: 2;
+      background: color-mix(in oklab, var(--c-surface) 70%, transparent); backdrop-filter: blur(6px);
+      color: var(--c-on-surface); border-radius: 999px; padding: 4px 10px;
+      font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase;
+    }
+    .hero-body { padding: 24px 24px 24px 0; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+    .hero-file { font-size: 18px; font-weight: 600; word-break: break-word; }
+    .hero-meta { color: var(--c-on-surface-variant); font-size: 13px; }
+
+    /* ── Linear progress ── */
+    .progress { height: 8px; border-radius: 999px; background: var(--c-surface-container-highest); overflow: hidden; }
+    .progress-bar { height: 100%; width: 0; border-radius: 999px; background: var(--c-primary); transition: width .4s ease; }
+    .progress-bar.error { background: var(--c-error); }
+    .progress.indeterminate .progress-bar { width: 35% !important; animation: indet 1.3s ease-in-out infinite; }
+    @keyframes indet { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+
+    /* ── Stat tiles ── */
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-top: 4px; }
+    .stat {
+      background: var(--c-surface-container); border-radius: 16px; padding: 12px 16px;
+    }
+    .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--c-on-surface-variant); }
+    .stat .value { font-size: 20px; font-weight: 600; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Worker / transfer cards ── */
+    .worker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .worker {
+      background: var(--c-surface-container-low); border-radius: 20px; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .worker-thumb {
+      position: relative; aspect-ratio: 16 / 10; background: var(--c-surface-container-high);
+      display: grid; place-items: center;
+    }
+    .worker-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .worker-thumb .placeholder { color: var(--c-on-surface-variant); opacity: .45; }
+    .worker-thumb .placeholder .ic { width: 40px; height: 40px; }
+    .worker-thumb.has-img .placeholder { display: none; }
+    .worker-thumb.failed img { display: none; }
+    .worker-thumb .wbadge {
+      position: absolute; top: 8px; left: 8px;
+      background: color-mix(in oklab, var(--c-surface) 70%, transparent); backdrop-filter: blur(6px);
+      border-radius: 999px; padding: 2px 8px; font-size: 10px; font-weight: 700; letter-spacing: .3px;
+    }
+    .worker-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .worker-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .worker-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--c-on-surface-variant); }
+
+    .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--c-surface-container-high); color: var(--c-on-surface-variant); }
+    .status-badge.uploading  { background: var(--c-primary-container); color: var(--c-on-primary-container); }
+    .status-badge.completed  { background: var(--c-success-container); color: var(--c-success); }
+    .status-badge.error      { background: var(--c-error-container); color: var(--c-on-error-container); }
+    .status-badge.checking, .status-badge.finalizing { background: var(--c-tertiary-container); color: var(--c-on-tertiary-container); }
+
+    .empty { padding: 40px; text-align: center; color: var(--c-on-surface-variant); }
+
+    /* ── Tables ── */
+    .table-card { padding: 0; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 14px 16px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .5px; color: var(--c-on-surface-variant);
+      border-bottom: 1px solid var(--c-outline-variant);
+    }
+    tbody td { padding: 10px 16px; border-bottom: 1px solid color-mix(in oklab, var(--c-outline-variant) 45%, transparent); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: color-mix(in oklab, var(--c-on-surface) 4%, transparent); }
+    .row-thumb { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; background: var(--c-surface-container-high); display: block; }
+    .row-thumb-ph { width: 52px; height: 52px; border-radius: 12px; background: var(--c-surface-container-high); display: grid; place-items: center; color: var(--c-on-surface-variant); opacity: .5; }
+    .fname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+    .mini-bar { width: 100px; height: 6px; border-radius: 999px; background: var(--c-surface-container-highest); overflow: hidden; }
+    .mini-bar > div { height: 100%; background: var(--c-primary); }
+    .res-ok { color: var(--c-success); font-weight: 600; }
+    .res-err { color: var(--c-error); font-weight: 600; }
+    .res-key { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--c-on-surface-variant); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+    .muted { color: var(--c-on-surface-variant); }
+
+    /* ── Mono / log ── */
+    .mono {
+      font-family: ui-monospace, "SF Mono", Menlo, "Liberation Mono", monospace; font-size: 12.5px;
+      background: var(--c-surface-container-lowest); border-radius: 16px; padding: 16px;
+      white-space: pre-wrap; max-height: 420px; overflow: auto; margin: 0;
     }
 
-    @media (max-width: 680px) {
-      nav { display: none; }
-      main { padding: 0.75rem; }
+    /* ── Config editor ── */
+    label.field-label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--c-on-surface-variant); margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%; font-family: inherit; font-size: 13px; color: var(--c-on-surface);
+      background: var(--c-surface-container-high); border: 1px solid transparent; border-radius: 12px;
+      padding: 10px 12px; transition: border-color .15s ease;
     }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--c-primary); }
+    textarea { min-height: 200px; resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+    select { appearance: none; cursor: pointer; }
 
-    .build-meta {
-      margin-top: 0.75rem;
-      color: var(--muted);
-      font-size: 0.78rem;
-      text-align: right;
-    }
-    .build-meta #bv-docker { color: #93c5fd; }
+    .kpi-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-bottom: 16px; }
+    .builder { border: 1px solid var(--c-outline-variant); border-radius: 20px; padding: 16px; margin-bottom: 16px; }
+    .builder-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .builder-title { font-size: 14px; font-weight: 600; }
+    .grid-auto { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .pair-list { display: grid; gap: 10px; }
+    .pair-card { border: 1px solid var(--c-outline-variant); border-radius: 16px; background: var(--c-surface-container); padding: 14px; }
+    .pair-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .pair-index { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .4px; color: var(--c-primary); }
+    .pair-row { display: grid; gap: 8px; grid-template-columns: 1.4fr 1fr 0.8fr; }
+    .pair-row + .pair-row { margin-top: 8px; }
+    .empty-note { color: var(--c-on-surface-variant); font-size: 13px; padding: 8px; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; align-items: center; }
+    .hint { color: var(--c-on-surface-variant); font-size: 13px; margin: 0 0 12px; }
 
-    /* ── accent color picker ── */
-    .nav-appearance { padding: 0 0.75rem 0.75rem; margin-top: auto; }
-    .accent-swatches {
-      display: flex; flex-wrap: wrap; gap: 0.35rem;
-      padding: 0.25rem 0 0.4rem;
+    /* ── Accent / theme sheet ── */
+    .sheet-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.32); z-index: 90; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+    .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
+    .sheet {
+      position: fixed; right: 16px; bottom: 16px; z-index: 91; width: 300px; max-width: calc(100vw - 32px);
+      background: var(--c-surface-container-high); border-radius: 24px; padding: 20px; box-shadow: var(--shadow);
+      transform: translateY(12px) scale(.98); opacity: 0; pointer-events: none; transition: all .2s ease;
     }
-    .accent-swatch {
-      width: 20px; height: 20px; border-radius: 50%;
-      border: 2px solid transparent; cursor: pointer;
-      transition: transform 120ms, border-color 120ms;
-      padding: 0;
+    .sheet.open { transform: none; opacity: 1; pointer-events: auto; }
+    .sheet h3 { font-size: 15px; margin-bottom: 4px; }
+    .sheet .hint { margin-bottom: 16px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+    .swatch { width: 36px; height: 36px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform .12s ease; }
+    .swatch:hover { transform: scale(1.12); }
+    .swatch.active { border-color: var(--c-on-surface); }
+    .hue-row { display: flex; align-items: center; gap: 12px; }
+    input[type="range"] { accent-color: var(--c-primary); }
+    .seg { display: inline-flex; border: 1px solid var(--c-outline-variant); border-radius: 999px; overflow: hidden; margin-top: 16px; }
+    .seg button { appearance: none; border: none; background: transparent; font-family: inherit; cursor: pointer; padding: 8px 16px; font-size: 13px; font-weight: 600; color: var(--c-on-surface-variant); display: inline-flex; align-items: center; gap: 6px; }
+    .seg button.active { background: var(--c-secondary-container); color: var(--c-on-secondary-container); }
+
+    /* ── Snackbar ── */
+    #snackbar {
+      position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 16px);
+      background: var(--c-inverse-surface); color: var(--c-inverse-on-surface);
+      border-radius: 12px; padding: 12px 18px; font-size: 13.5px; box-shadow: var(--shadow);
+      opacity: 0; pointer-events: none; transition: all .2s ease; z-index: 100; max-width: 90vw;
     }
-    .accent-swatch:hover, .accent-swatch.active { transform: scale(1.15); border-color: var(--text); }
-    .accent-custom-row {
-      display: flex; align-items: center; gap: 0.5rem;
-      font-size: 0.78rem; color: var(--muted); cursor: pointer;
-    }
-    .accent-custom-row input[type="color"] {
-      width: 22px; height: 22px; border: none; background: none;
-      border-radius: 50%; cursor: pointer; padding: 0;
+    #snackbar.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .build-meta { margin-top: 24px; text-align: center; color: var(--c-on-surface-variant); font-size: 12px; }
+    .build-meta #bv-docker { color: var(--c-primary); }
+
+    /* ── Responsive: rail → bottom nav ── */
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      .rail {
+        position: fixed; bottom: 0; top: auto; left: 0; right: 0; height: auto; width: 100%;
+        flex-direction: row; justify-content: space-around; padding: 8px 4px;
+        border-top: 1px solid var(--c-outline-variant); z-index: 30;
+        background: var(--c-surface-container);
+      }
+      .rail-logo { display: none; }
+      .rail-nav { flex-direction: row; flex: 1; justify-content: space-around; }
+      .rail-foot { flex-direction: row; width: auto; }
+      .content { padding-bottom: 96px; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-media { min-height: 200px; }
+      .hero-body { padding: 16px; }
+      .appbar-actions .btn span.lbl { display: none; }
+      .appbar-actions .btn { padding: 0 14px; }
     }
   </style>
 </head>
 <body>
-<div class="shell">
-  <!-- ── Sidebar ── -->
-  <nav id="sidebar">
-    <div class="nav-logo">gp-cron<span>docker control panel</span></div>
-    <div class="nav-section">Dashboard</div>
-    <a data-page="overview" class="active">&#9632; Overview</a>
-    <a data-page="transfers">&#8657; Transfers</a>
-    <a data-page="history">&#10003; History</a>
-    <div class="nav-section">Configuration</div>
-    <a data-page="schedule">&#9719; Schedule</a>
-    <a data-page="config">&#9881; Config Editor</a>
-    <div class="nav-section">Diagnostics</div>
-    <a data-page="log">&#9654; Log</a>
-    <div class="nav-section" style="margin-top:auto">Appearance</div>
-    <div class="nav-appearance">
-      <div class="accent-swatches" id="accent-swatches">
-        <button class="accent-swatch" data-accent="#d0bcff" title="Lavender" style="background:#d0bcff"></button>
-        <button class="accent-swatch" data-accent="#89cff0" title="Sky" style="background:#89cff0"></button>
-        <button class="accent-swatch" data-accent="#80cbc4" title="Teal" style="background:#80cbc4"></button>
-        <button class="accent-swatch" data-accent="#b5ccb8" title="Sage" style="background:#b5ccb8"></button>
-        <button class="accent-swatch" data-accent="#ffb77c" title="Peach" style="background:#ffb77c"></button>
-        <button class="accent-swatch" data-accent="#ffb4ab" title="Rose" style="background:#ffb4ab"></button>
-        <button class="accent-swatch" data-accent="#ffd580" title="Gold" style="background:#ffd580"></button>
-      </div>
-      <label class="accent-custom-row" title="Pick a custom accent color">
-        <span>Custom</span>
-        <input type="color" id="accent-picker" value="#d0bcff">
-      </label>
-    </div>
-  </nav>
+  <!-- ── icon sprite ── -->
+  <svg style="display:none" aria-hidden="true">
+    <symbol id="ic-home" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></symbol>
+    <symbol id="ic-upload" viewBox="0 0 24 24"><path d="M19.35 10.04A7.49 7.49 0 0 0 12 4 7.49 7.49 0 0 0 5.06 8.63 5.994 5.994 0 0 0 0 14.5 6 6 0 0 0 6 20h13a5 5 0 0 0 .35-9.96zM14 13v4h-4v-4H7l5-5 5 5z"/></symbol>
+    <symbol id="ic-history" viewBox="0 0 24 24"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6a7 7 0 1 1 7 7 6.94 6.94 0 0 1-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8z"/></symbol>
+    <symbol id="ic-schedule" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></symbol>
+    <symbol id="ic-tune" viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></symbol>
+    <symbol id="ic-code" viewBox="0 0 24 24"><path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></symbol>
+    <symbol id="ic-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="ic-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
+    <symbol id="ic-refresh" viewBox="0 0 24 24"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></symbol>
+    <symbol id="ic-light" viewBox="0 0 24 24"><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0-5h0v3m0 14v3M2 12h3m14 0h3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M19.8 4.2l-2.1 2.1M6.3 17.7l-2.1 2.1" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></symbol>
+    <symbol id="ic-dark" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.4-9.61c-.44-.06-.9-.1-1.1-.1z"/></symbol>
+    <symbol id="ic-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.36-.6-.36-.99 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8zM6.5 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></symbol>
+    <symbol id="ic-image" viewBox="0 0 24 24"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.9 13.98l2.1 2.53 3.1-3.99L18 18H6l2.9-4.02z"/></symbol>
+    <symbol id="ic-movie" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4h-4z"/></symbol>
+  </svg>
 
-  <main>
-    <!-- ═══════════════ OVERVIEW ═══════════════ -->
-    <div id="page-overview" class="page active">
-      <div class="btn-row">
-        <h2 style="margin:0;flex:1">Overview</h2>
-        <button class="btn" id="btn-refresh">&#8635; Refresh</button>
-        <button class="btn warn" id="btn-run">&#9654; Run Now</button>
-        <button class="btn danger" id="btn-cancel">&#9632; Cancel</button>
+  <div class="app">
+    <!-- ── Navigation rail ── -->
+    <aside class="rail">
+      <div class="rail-logo"><svg class="ic"><use href="#ic-upload"/></svg></div>
+      <nav class="rail-nav">
+        <button class="rail-item active" data-page="overview"><span class="rail-icon"><svg class="ic"><use href="#ic-home"/></svg></span>Home</button>
+        <button class="rail-item" data-page="transfers"><span class="rail-icon"><svg class="ic"><use href="#ic-upload"/></svg></span>Transfers</button>
+        <button class="rail-item" data-page="history"><span class="rail-icon"><svg class="ic"><use href="#ic-history"/></svg></span>History</button>
+        <button class="rail-item" data-page="schedule"><span class="rail-icon"><svg class="ic"><use href="#ic-schedule"/></svg></span>Schedule</button>
+        <button class="rail-item" data-page="config"><span class="rail-icon"><svg class="ic"><use href="#ic-tune"/></svg></span>Config</button>
+        <button class="rail-item" data-page="log"><span class="rail-icon"><svg class="ic"><use href="#ic-code"/></svg></span>Log</button>
+      </nav>
+      <div class="rail-foot">
+        <button class="rail-item" id="theme-toggle"><span class="rail-icon"><svg class="ic" id="theme-icon"><use href="#ic-dark"/></svg></span>Theme</button>
+        <button class="rail-item" id="accent-toggle"><span class="rail-icon"><svg class="ic"><use href="#ic-palette"/></svg></span>Colour</button>
       </div>
+    </aside>
 
-      <div class="grid-4" id="stat-cards">
-        <div class="stat-card"><div class="label">Scheduler</div><div class="value" id="sc-state">—</div></div>
-        <div class="stat-card"><div class="label">Last run</div><div class="value" id="sc-last-start">—</div></div>
-        <div class="stat-card"><div class="label">Exit code</div><div class="value" id="sc-exit">—</div></div>
-        <div class="stat-card"><div class="label">Hostname</div><div class="value" id="sc-host">—</div></div>
-        <div class="stat-card"><div class="label">Files done</div><div class="value" id="sc-files">—</div></div>
-        <div class="stat-card"><div class="label">Bytes up</div><div class="value" id="sc-bytes">—</div></div>
-        <div class="stat-card"><div class="label">Speed</div><div class="value" id="sc-speed">—</div></div>
-        <div class="stat-card"><div class="label">ETA</div><div class="value" id="sc-eta">—</div></div>
-      </div>
-
-      <div class="panel">
-        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
-          <span id="ov-state-pill" class="pill unknown">UNKNOWN</span>
-          <span id="ov-manual-pill" class="pill idle">MANUAL IDLE</span>
-          <span id="ov-album-badge" style="display:none" class="album-badge">&#127381; <span id="ov-album-text"></span></span>
+    <div class="main">
+      <header class="appbar">
+        <div class="appbar-title">
+          <h1 id="page-title">Home</h1>
+          <p id="page-sub">Live backup overview</p>
         </div>
-        <div class="prog-wrap">
-          <div class="prog-track"><div id="ov-prog-fill" class="prog-fill"></div></div>
-          <div id="ov-prog-meta" class="prog-meta">No active upload.</div>
+        <div class="appbar-actions">
+          <button class="icon-btn" id="btn-refresh" title="Refresh"><svg class="ic"><use href="#ic-refresh"/></svg></button>
+          <button class="btn filled" id="btn-run"><svg class="ic"><use href="#ic-play"/></svg><span class="lbl">Run now</span></button>
+          <button class="btn error" id="btn-cancel"><svg class="ic"><use href="#ic-stop"/></svg><span class="lbl">Cancel</span></button>
         </div>
-      </div>
-    </div>
+      </header>
 
-    <!-- ═══════════════ TRANSFERS ═══════════════ -->
-    <div id="page-transfers" class="page">
-      <div class="btn-row">
-        <h2 style="margin:0;flex:1">Active Transfers</h2>
-        <span id="tr-refresh-indicator" style="color:var(--muted);font-size:0.8rem">auto-refresh 3 s</span>
-      </div>
-      <div class="panel" style="padding:0;overflow:hidden">
-        <table id="transfers-table">
-          <thead><tr>
-            <th>#</th><th>File</th><th>Status</th><th>Progress</th><th>Uploaded</th><th>Attempt</th>
-          </tr></thead>
-          <tbody id="transfers-body">
-            <tr class="empty-row"><td colspan="6">No active transfers.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- ═══════════════ HISTORY ═══════════════ -->
-    <div id="page-history" class="page">
-      <div class="btn-row">
-        <h2 style="margin:0;flex:1">File Results</h2>
-        <span style="color:var(--muted);font-size:0.8rem">last 200 files</span>
-      </div>
-      <div class="panel" style="padding:0;overflow:hidden">
-        <table id="history-table">
-          <thead><tr>
-            <th>Result</th><th>File</th><th>Media Key</th><th>Time</th>
-          </tr></thead>
-          <tbody id="history-body">
-            <tr class="empty-row"><td colspan="4">No file results yet.</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- ═══════════════ SCHEDULE ═══════════════ -->
-    <div id="page-schedule" class="page">
-      <h2>Cron Schedule</h2>
-      <div class="panel">
-        <h3>Registered Entries</h3>
-        <pre id="cron-list" class="mono">Loading…</pre>
-      </div>
-      <div class="panel">
-        <h3>Pair Scope</h3>
-        <div id="pair-scope" style="color:var(--muted);font-size:0.85rem">—</div>
-      </div>
-    </div>
-
-    <!-- ═══════════════ CONFIG ═══════════════ -->
-    <div id="page-config" class="page">
-      <h2>Runtime Config Editor</h2>
-      <div class="panel">
-        <p style="color:var(--muted);margin:0 0 0.75rem;font-size:0.85rem">
-          KEY=VALUE pairs. You can explicitly switch to <code>/.env</code> mode when that file is mounted.
-          Config source: <strong id="cfg-source">—</strong>
-        </p>
-
-        <div class="cfg-grid">
-          <div class="cfg-kpi"><div class="cfg-kpi-label">Pairs</div><div class="cfg-kpi-value" id="cfg-kpi-pairs">0</div></div>
-          <div class="cfg-kpi"><div class="cfg-kpi-label">Sources Set</div><div class="cfg-kpi-value" id="cfg-kpi-sources">0</div></div>
-          <div class="cfg-kpi"><div class="cfg-kpi-label">Target Albums</div><div class="cfg-kpi-value" id="cfg-kpi-albums">0</div></div>
-          <div class="cfg-kpi"><div class="cfg-kpi-label">Cron Overrides</div><div class="cfg-kpi-value" id="cfg-kpi-cron">0</div></div>
-        </div>
-
-        <div class="btn-row">
-          <button class="btn" id="btn-load-cfg">&#8635; Load</button>
-          <button class="btn primary" id="btn-save-cfg">&#10003; Save</button>
-          <button class="btn warn" id="btn-switch-dotenv">Use /.env Source</button>
-        </div>
-
-        <div class="cfg-builder">
-          <div class="cfg-builder-head">
-            <div class="cfg-builder-title">Global Controls</div>
+      <main class="content">
+        <!-- ═══════════ OVERVIEW ═══════════ -->
+        <section id="page-overview" class="page active">
+          <div class="card hero">
+            <div class="hero-media no-img" id="hero-media">
+              <span class="hero-badge" id="hero-badge" hidden>Now uploading</span>
+              <img id="hero-img" alt="">
+              <div class="placeholder ph-image"><svg class="ic"><use href="#ic-image"/></svg></div>
+              <div class="placeholder ph-video"><svg class="ic"><use href="#ic-movie"/></svg></div>
+            </div>
+            <div class="hero-body">
+              <div class="chips">
+                <span class="chip" id="state-chip"><span class="dot"></span>UNKNOWN</span>
+                <span class="chip" id="manual-chip">Manual idle</span>
+                <span class="chip album" id="album-chip" hidden></span>
+              </div>
+              <div class="hero-file" id="hero-file">No active upload</div>
+              <div class="progress"><div class="progress-bar" id="overall-bar"></div></div>
+              <div class="hero-meta" id="hero-meta">Idle — press Run now to start a manual backup.</div>
+              <div class="stat-row">
+                <div class="stat"><div class="label">Files</div><div class="value" id="st-files">—</div></div>
+                <div class="stat"><div class="label">Uploaded</div><div class="value" id="st-bytes">—</div></div>
+                <div class="stat"><div class="label">Speed</div><div class="value" id="st-speed">—</div></div>
+                <div class="stat"><div class="label">ETA</div><div class="value" id="st-eta">—</div></div>
+              </div>
+            </div>
           </div>
-          <div id="cfg-base-controls" class="cfg-base-grid"></div>
-        </div>
 
-        <div class="cfg-builder">
-          <div class="cfg-builder-head">
-            <div class="cfg-builder-title">Pair Builder</div>
-            <button class="btn" id="btn-add-pair">+ Add Pair</button>
+          <h2 class="section-title">Active transfers</h2>
+          <div class="worker-grid" id="worker-grid">
+            <div class="empty">No active transfers.</div>
           </div>
-          <div id="cfg-pair-list" class="cfg-pair-list">
-            <div class="cfg-empty-note">No pairs yet. Add one to define source and target album mappings.</div>
+        </section>
+
+        <!-- ═══════════ TRANSFERS ═══════════ -->
+        <section id="page-transfers" class="page">
+          <div class="card table-card">
+            <table>
+              <thead><tr>
+                <th></th><th>File</th><th>Status</th><th>Progress</th><th>Uploaded</th><th>#</th>
+              </tr></thead>
+              <tbody id="transfers-body">
+                <tr><td colspan="6"><div class="empty">No active transfers.</div></td></tr>
+              </tbody>
+            </table>
           </div>
+        </section>
+
+        <!-- ═══════════ HISTORY ═══════════ -->
+        <section id="page-history" class="page">
+          <div class="card table-card">
+            <table>
+              <thead><tr>
+                <th></th><th>File</th><th>Result</th><th>Media key</th><th>Time</th>
+              </tr></thead>
+              <tbody id="history-body">
+                <tr><td colspan="5"><div class="empty">No file results yet.</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- ═══════════ SCHEDULE ═══════════ -->
+        <section id="page-schedule" class="page">
+          <div class="card">
+            <h3 style="margin-bottom:12px">Registered cron entries</h3>
+            <pre id="cron-list" class="mono">Loading…</pre>
+          </div>
+          <div class="card">
+            <h3 style="margin-bottom:8px">Pair scope</h3>
+            <div id="pair-scope" class="muted">—</div>
+          </div>
+        </section>
+
+        <!-- ═══════════ CONFIG ═══════════ -->
+        <section id="page-config" class="page">
+          <div class="card">
+            <p class="hint">KEY=VALUE pairs. You can switch to <code>/.env</code> mode when that file is mounted. Config source: <strong id="cfg-source">—</strong></p>
+
+            <div class="kpi-grid">
+              <div class="stat"><div class="label">Pairs</div><div class="value" id="cfg-kpi-pairs">0</div></div>
+              <div class="stat"><div class="label">Sources</div><div class="value" id="cfg-kpi-sources">0</div></div>
+              <div class="stat"><div class="label">Albums</div><div class="value" id="cfg-kpi-albums">0</div></div>
+              <div class="stat"><div class="label">Cron overrides</div><div class="value" id="cfg-kpi-cron">0</div></div>
+            </div>
+
+            <div class="btn-row">
+              <button class="btn tonal" id="btn-load-cfg"><svg class="ic"><use href="#ic-refresh"/></svg>Load</button>
+              <button class="btn filled" id="btn-save-cfg">Save</button>
+              <button class="btn outlined" id="btn-switch-dotenv">Use /.env source</button>
+            </div>
+
+            <div class="builder">
+              <div class="builder-head"><div class="builder-title">Global controls</div></div>
+              <div id="cfg-base-controls" class="grid-auto"></div>
+            </div>
+
+            <div class="builder">
+              <div class="builder-head">
+                <div class="builder-title">Pair builder</div>
+                <button class="btn text" id="btn-add-pair">+ Add pair</button>
+              </div>
+              <div id="cfg-pair-list" class="pair-list">
+                <div class="empty-note">No pairs yet. Add one to define source and target album mappings.</div>
+              </div>
+            </div>
+
+            <label class="field-label">Raw config</label>
+            <textarea id="cfg-editor" spellcheck="false" placeholder="CRON=0 2 * * *&#10;GOTOHP_THREADS=4&#10;SOURCE_PATH_0=/mnt/photos"></textarea>
+            <pre id="cfg-result" class="mono" style="margin-top:12px;max-height:140px"></pre>
+          </div>
+        </section>
+
+        <!-- ═══════════ LOG ═══════════ -->
+        <section id="page-log" class="page">
+          <div class="card">
+            <pre id="log-output" class="mono">No log yet.</pre>
+          </div>
+        </section>
+
+        <div class="build-meta">
+          gotohp <span id="bv-gotohp">__GOTOHP_VERSION__</span><span id="bv-docker"></span>
         </div>
-
-        <textarea id="cfg-editor" spellcheck="false" placeholder="CRON=0 2 * * *
-GOTOHP_THREADS=4
-SOURCE_PATH_0=/mnt/photos"></textarea>
-        <pre id="cfg-result" class="mono" style="margin-top:0.5rem;max-height:120px"></pre>
-      </div>
+      </main>
     </div>
+  </div>
 
-    <!-- ═══════════════ LOG ═══════════════ -->
-    <div id="page-log" class="page">
-      <div class="btn-row">
-        <h2 style="margin:0;flex:1">Manual Backup Log</h2>
-        <button class="btn" id="btn-refresh-log">&#8635; Refresh</button>
-      </div>
-      <div class="panel" style="padding:0.5rem">
-        <pre id="log-output" class="mono">No log yet.</pre>
-      </div>
+  <!-- ── Accent / theme sheet ── -->
+  <div class="sheet-backdrop" id="sheet-backdrop"></div>
+  <div class="sheet" id="accent-sheet" role="dialog" aria-label="Appearance">
+    <h3>Accent colour</h3>
+    <p class="hint">Dynamic Material You tint from a source hue.</p>
+    <div class="swatches" id="swatches"></div>
+    <div class="hue-row">
+      <svg class="ic ic-sm"><use href="#ic-palette"/></svg>
+      <input type="range" id="hue-slider" min="0" max="360" step="1" style="flex:1">
     </div>
-
-    <div class="build-meta">
-      gotohp <span id="bv-gotohp">__GOTOHP_VERSION__</span><span id="bv-docker"></span>
+    <div class="seg" id="theme-seg">
+      <button data-theme-val="light"><svg class="ic ic-sm"><use href="#ic-light"/></svg>Light</button>
+      <button data-theme-val="dark"><svg class="ic ic-sm"><use href="#ic-dark"/></svg>Dark</button>
     </div>
-  </main>
-</div>
+  </div>
 
-<div id="toast"></div>
+  <div id="snackbar"></div>
 
 <script>
 'use strict';
@@ -570,84 +606,101 @@ SOURCE_PATH_0=/mnt/photos"></textarea>
   const metaBranch = document.querySelector('meta[name="docker-build-branch"]')?.content || '';
   const metaCommit = document.querySelector('meta[name="docker-build-commit"]')?.content || '';
   if (bvGotohp) {
-    if (bvGotohp.textContent.trim() === '__GOTOHP_VERSION__') {
-      bvGotohp.textContent = 'development';
-    }
+    if (bvGotohp.textContent.trim() === '__GOTOHP_VERSION__') bvGotohp.textContent = 'development';
     if (metaBranch && metaBranch !== '__DOCKER_BRANCH__') {
       const shortCommit = (metaCommit && metaCommit !== '__DOCKER_COMMIT__') ? metaCommit.slice(0, 12) : '';
-      if (bvDocker) {
-        bvDocker.textContent = '\u00a0\u00b7\u00a0' + metaBranch + (shortCommit ? ' \u2387 ' + shortCommit : '');
-      }
+      if (bvDocker) bvDocker.textContent = ' · ' + metaBranch + (shortCommit ? ' ⎇ ' + shortCommit : '');
     }
   }
 }
 
-// ── accent color ─────────────────────────────────────────────────────────────
-function applyAccent(hex) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const dimHex = '#' + [Math.round(r * 0.82), Math.round(g * 0.82), Math.round(b * 0.82)]
-    .map(v => Math.min(255, v).toString(16).padStart(2, '0')).join('');
-  // Relative luminance — pick a dark text for light accents, light for dark ones.
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  const textHex = lum > 0.45 ? '#1a1a2e' : '#e8eaed';
-  const root = document.documentElement;
-  root.style.setProperty('--accent', hex);
-  root.style.setProperty('--accent-dim', dimHex);
-  root.style.setProperty('--accent-text', textHex);
-  localStorage.setItem('accentColor', hex);
-  // Sync color picker thumb
-  const picker = document.getElementById('accent-picker');
-  if (picker) picker.value = hex;
-  // Mark active swatch
-  document.querySelectorAll('.accent-swatch').forEach(s => {
-    s.classList.toggle('active', s.dataset.accent === hex);
-  });
+// ── theme + accent (Material You) ─────────────────────────────────────────────
+const DEFAULT_HUE = 263;
+const SWATCH_HUES = [263, 295, 330, 350, 25, 60, 90, 150, 195];
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  try { localStorage.setItem('m3-theme', theme); } catch (e) {}
+  document.getElementById('theme-icon').firstElementChild.setAttribute('href', theme === 'dark' ? '#ic-dark' : '#ic-light');
+  document.querySelectorAll('#theme-seg button').forEach(b => b.classList.toggle('active', b.dataset.themeVal === theme));
 }
-// Restore saved accent (or leave CSS default if nothing saved)
-const _savedAccent = localStorage.getItem('accentColor');
-if (_savedAccent) applyAccent(_savedAccent);
-// Swatch clicks
-document.getElementById('accent-swatches')?.addEventListener('click', e => {
-  const swatch = e.target.closest('.accent-swatch');
-  if (swatch) applyAccent(swatch.dataset.accent);
-});
-// Custom color picker
-document.getElementById('accent-picker')?.addEventListener('input', e => applyAccent(e.target.value));
+function currentTheme() { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+
+function applyHue(hue) {
+  document.documentElement.style.setProperty('--seed-hue', String(hue));
+  try { localStorage.setItem('m3-hue', String(hue)); } catch (e) {}
+  document.querySelectorAll('.swatch').forEach(s => s.classList.toggle('active', Number(s.dataset.hue) === Number(hue)));
+  const slider = document.getElementById('hue-slider');
+  if (slider && Number(slider.value) !== Number(hue)) slider.value = hue;
+}
+
+function buildSwatches() {
+  const root = document.getElementById('swatches');
+  root.innerHTML = SWATCH_HUES.map(h =>
+    `<button class="swatch" data-hue="${h}" title="Hue ${h}" style="background:oklch(72% 0.15 ${h})"></button>`
+  ).join('');
+  root.querySelectorAll('.swatch').forEach(s => s.addEventListener('click', () => applyHue(Number(s.dataset.hue))));
+}
+
+function initAppearance() {
+  buildSwatches();
+  setTheme(currentTheme());
+  let savedHue = DEFAULT_HUE;
+  try { const h = localStorage.getItem('m3-hue'); if (h) savedHue = Number(h); } catch (e) {}
+  applyHue(savedHue);
+
+  document.getElementById('theme-toggle').addEventListener('click', () => setTheme(currentTheme() === 'dark' ? 'light' : 'dark'));
+  document.querySelectorAll('#theme-seg button').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeVal)));
+  document.getElementById('hue-slider').addEventListener('input', e => applyHue(Number(e.target.value)));
+
+  const sheet = document.getElementById('accent-sheet');
+  const backdrop = document.getElementById('sheet-backdrop');
+  const openSheet = () => { sheet.classList.add('open'); backdrop.classList.add('open'); };
+  const closeSheet = () => { sheet.classList.remove('open'); backdrop.classList.remove('open'); };
+  document.getElementById('accent-toggle').addEventListener('click', () => sheet.classList.contains('open') ? closeSheet() : openSheet());
+  backdrop.addEventListener('click', closeSheet);
+}
 
 // ── navigation ───────────────────────────────────────────────────────────────
-document.querySelectorAll('nav a[data-page]').forEach(link => {
-  link.addEventListener('click', () => {
-    document.querySelectorAll('nav a').forEach(a => a.classList.remove('active'));
+const PAGE_META = {
+  overview:  ['Home', 'Live backup overview'],
+  transfers: ['Transfers', 'Files moving right now'],
+  history:   ['History', 'Recent file results'],
+  schedule:  ['Schedule', 'Cron entries & scope'],
+  config:    ['Config', 'Runtime configuration editor'],
+  log:       ['Log', 'Manual backup output'],
+};
+document.querySelectorAll('.rail-item[data-page]').forEach(item => {
+  item.addEventListener('click', () => {
+    const page = item.dataset.page;
+    document.querySelectorAll('.rail-item[data-page]').forEach(a => a.classList.remove('active'));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    link.classList.add('active');
-    document.getElementById('page-' + link.dataset.page).classList.add('active');
+    item.classList.add('active');
+    document.getElementById('page-' + page).classList.add('active');
+    const [title, sub] = PAGE_META[page] || ['', ''];
+    document.getElementById('page-title').textContent = title;
+    document.getElementById('page-sub').textContent = sub;
   });
 });
 
-// ── toast ─────────────────────────────────────────────────────────────────────
-let toastTimer;
-function toast(msg) {
-  const el = document.getElementById('toast');
+// ── snackbar ─────────────────────────────────────────────────────────────────
+let snackTimer;
+function snack(msg) {
+  const el = document.getElementById('snackbar');
   el.textContent = msg;
   el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+  clearTimeout(snackTimer);
+  snackTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────
 function fmtBytes(n) {
   if (!n || n < 0) return '0 B';
-  const units = ['B','KiB','MiB','GiB','TiB'];
-  let i = 0;
+  const units = ['B','KiB','MiB','GiB','TiB']; let i = 0;
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return n.toFixed(i ? 1 : 0) + ' ' + units[i];
 }
-function fmtSpeed(bps) {
-  if (!bps || bps <= 0) return '—';
-  return fmtBytes(bps) + '/s';
-}
+function fmtSpeed(bps) { return (!bps || bps <= 0) ? '—' : fmtBytes(bps) + '/s'; }
 function fmtETA(sec) {
   if (!sec || sec <= 0) return '—';
   const t = Math.round(sec);
@@ -655,70 +708,76 @@ function fmtETA(sec) {
   if (t < 3600) return Math.floor(t / 60) + 'm ' + (t % 60) + 's';
   return Math.floor(t / 3600) + 'h ' + Math.floor((t % 3600) / 60) + 'm';
 }
-function fmtDate(s) {
-  if (!s) return '—';
-  try { return new Date(s).toLocaleString(); } catch { return s; }
-}
+function fmtDate(s) { if (!s) return '—'; try { return new Date(s).toLocaleString(); } catch { return s; } }
 function safe(v, fb = '—') { return (v !== null && v !== undefined && String(v).trim()) ? v : fb; }
-
-// Remove ANSI escape/control artifacts from logs before rendering.
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function cleanLogText(s) {
   return String(s || '')
-    // Standard ANSI CSI escapes: ESC[ ... letter
-    .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    // Some clients encode ESC as C1 CSI (0x9B)
-    .replace(/\u009b[0-9;?]*[ -/]*[@-~]/g, '')
-    // Fallback for mangled replacement-char artifacts like "�[32m"
-    .replace(/\uFFFD\[[0-9;?]*[ -/]*[@-~]/g, '')
-    // Remove remaining low ASCII controls except newline/tab
+    .replace(/\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/�\[[0-9;?]*[ -/]*[@-~]/g, '')
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 }
 
-function pillClass(state) {
+// ── thumbnails ────────────────────────────────────────────────────────────────
+const IMG_EXT = ['jpg','jpeg','png','gif','webp','bmp','heic','heif','avif','tif','tiff'];
+function isImagePath(p) { const m = /\.([a-z0-9]+)$/i.exec(p || ''); return !!(m && IMG_EXT.includes(m[1].toLowerCase())); }
+function thumbURL(p) { return '/api/thumb?path=' + encodeURIComponent(p); }
+
+function stateChipClass(state) {
   const s = (state || '').toLowerCase();
   if (s === 'running') return 'running';
   if (s === 'complete' || s === 'success') return 'complete';
   if (s === 'failed' || s === 'error') return 'failed';
   if (s === 'cancelled') return 'cancelled';
-  if (s === 'idle') return 'idle';
-  return 'unknown';
+  return '';
 }
-
 function statusBadge(status) {
-  const cls = {
-    idle: 'sb-idle', hashing: 'sb-hashing', checking: 'sb-checking',
-    uploading: 'sb-uploading', finalizing: 'sb-finalizing',
-    completed: 'sb-completed', error: 'sb-error'
-  }[status] || 'sb-idle';
-  return `<span class="status-badge ${cls}">${esc(status || 'idle')}</span>`;
+  const s = (status || 'idle').toLowerCase();
+  return `<span class="status-badge ${esc(s)}">${esc(status || 'idle')}</span>`;
 }
 
-function esc(s) {
-  return String(s)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#39;');
-}
+// ── hero (current image) ──────────────────────────────────────────────────────
+let heroPath = null;
+function updateHero(featured) {
+  const media = document.getElementById('hero-media');
+  const img = document.getElementById('hero-img');
+  const badge = document.getElementById('hero-badge');
+  const fileEl = document.getElementById('hero-file');
 
-// ── state ─────────────────────────────────────────────────────────────────────
-let lastStatus = null;
+  if (!featured) {
+    badge.hidden = true;
+    heroPath = null; img.removeAttribute('src');
+    media.classList.add('no-img'); media.classList.remove('is-video');
+    return;
+  }
+  badge.hidden = false;
+  fileEl.textContent = featured.file_name || featured.file_path || '—';
+  if (isImagePath(featured.file_path)) {
+    media.classList.remove('is-video');
+    if (heroPath !== featured.file_path) {
+      heroPath = featured.file_path;
+      media.classList.remove('no-img');
+      img.src = thumbURL(featured.file_path);
+    }
+  } else {
+    heroPath = null; img.removeAttribute('src');
+    media.classList.remove('no-img'); media.classList.add('is-video');
+  }
+}
+document.getElementById('hero-img').addEventListener('error', () => {
+  document.getElementById('hero-media').classList.add('no-img');
+});
+
+// ── config editor state (KEY=VALUE / pair builder) ────────────────────────────
 const cfgKnownBaseKeys = [
-  'CRON', 'CRON_OVERLAP', 'TIMEZONE',
-  'WEBUI_BIND', 'WEBUI_PORT', 'WEBUI_AUTH', 'WEBUI_USERNAME', 'WEBUI_PASSWORD', 'WEBUI_TOKEN',
-  'GOTOHP_THREADS', 'GOTOHP_RECURSIVE', 'GOTOHP_FORCE', 'GOTOHP_DELETE',
-  'GOTOHP_DISABLE_FILTER', 'GOTOHP_DATE_FROM_FILENAME', 'GOTOHP_LOG_LEVEL',
-  'GOTOHP_CREDS', 'GOTOHP_EMAIL', 'SOURCE_PATH', 'ALBUM_NAME'
-];
-const cfgPairPrefixes = [
-  'SOURCE_PATH_', 'ALBUM_NAME_', 'CRON_',
-  'GOTOHP_THREADS_', 'GOTOHP_RECURSIVE_', 'GOTOHP_FORCE_', 'GOTOHP_DELETE_',
-  'GOTOHP_DISABLE_FILTER_', 'GOTOHP_DATE_FROM_FILENAME_', 'GOTOHP_LOG_LEVEL_',
-  'GOTOHP_CREDS_', 'GOTOHP_EMAIL_'
+  'CRON','CRON_OVERLAP','TIMEZONE','WEBUI_BIND','WEBUI_PORT','WEBUI_AUTH','WEBUI_USERNAME','WEBUI_PASSWORD','WEBUI_TOKEN',
+  'GOTOHP_THREADS','GOTOHP_RECURSIVE','GOTOHP_FORCE','GOTOHP_DELETE','GOTOHP_DISABLE_FILTER','GOTOHP_DATE_FROM_FILENAME',
+  'GOTOHP_LOG_LEVEL','GOTOHP_CREDS','GOTOHP_EMAIL','SOURCE_PATH','ALBUM_NAME'
 ];
 let cfgState = { base: {}, extra: {}, pairs: [] };
-
 const cfgBaseFieldDefs = [
   { key: 'CRON', label: 'Global CRON', placeholder: '0 2 * * *' },
   { key: 'CRON_OVERLAP', label: 'CRON_OVERLAP', type: 'select', options: [['', '(default: queue)'], ['QUEUE', 'QUEUE'], ['MULTITHREAD', 'MULTITHREAD'], ['SKIP', 'SKIP']] },
@@ -754,356 +813,285 @@ function renderBaseControls() {
   root.innerHTML = cfgBaseFieldDefs.map(def => {
     const value = cfgState.base[def.key] || '';
     if (def.type === 'select') {
-      return `<div class="cfg-base-field">
-        <label for="cfg-base-${def.key}">${esc(def.label)}</label>
-        <select id="cfg-base-${def.key}" data-base-key="${esc(def.key)}">
-          ${renderSelectOptions(value, def.options || [])}
-        </select>
-      </div>`;
+      return `<div class="field"><label class="field-label">${esc(def.label)}</label>
+        <select data-base-key="${esc(def.key)}">${renderSelectOptions(value, def.options || [])}</select></div>`;
     }
-    return `<div class="cfg-base-field">
-      <label for="cfg-base-${def.key}">${esc(def.label)}</label>
-      <input id="cfg-base-${def.key}" data-base-key="${esc(def.key)}" value="${esc(value)}" placeholder="${esc(def.placeholder || '')}">
-    </div>`;
+    return `<div class="field"><label class="field-label">${esc(def.label)}</label>
+      <input data-base-key="${esc(def.key)}" value="${esc(value)}" placeholder="${esc(def.placeholder || '')}"></div>`;
   }).join('');
-
   root.querySelectorAll('[data-base-key]').forEach(control => {
     const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
     control.addEventListener(eventName, e => {
-      const key = e.target.dataset.baseKey;
-      const value = e.target.value;
-      if (value === '') {
-        delete cfgState.base[key];
-      } else {
-        cfgState.base[key] = value;
-      }
+      const key = e.target.dataset.baseKey, value = e.target.value;
+      if (value === '') delete cfgState.base[key]; else cfgState.base[key] = value;
       document.getElementById('cfg-editor').value = buildConfigTextFromState();
     });
   });
 }
 
 function parseConfigText(text) {
-  const pairsByIndex = new Map();
-  const base = {};
-  const extra = {};
-
-  const lines = String(text || '').split('\n');
-  for (const raw of lines) {
+  const pairsByIndex = new Map(); const base = {}; const extra = {};
+  for (const raw of String(text || '').split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-
-    const eq = line.indexOf('=');
-    if (eq <= 0) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1);
-
+    const eq = line.indexOf('='); if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim(); const value = line.slice(eq + 1);
     const m = key.match(/^(SOURCE_PATH|ALBUM_NAME|CRON|GOTOHP_THREADS|GOTOHP_RECURSIVE|GOTOHP_FORCE|GOTOHP_DELETE|GOTOHP_DISABLE_FILTER|GOTOHP_DATE_FROM_FILENAME|GOTOHP_LOG_LEVEL|GOTOHP_CREDS|GOTOHP_EMAIL)_(\d+)$/);
     if (m) {
-      const field = m[1].toLowerCase();
-      const idx = Number(m[2]);
+      const field = m[1].toLowerCase(); const idx = Number(m[2]);
       if (!pairsByIndex.has(idx)) pairsByIndex.set(idx, {
-        source_path: '', album_name: '', cron: '',
-        gotohp_threads: '', gotohp_recursive: '', gotohp_force: '', gotohp_delete: '',
-        gotohp_disable_filter: '', gotohp_date_from_filename: '', gotohp_log_level: '',
-        gotohp_creds: '', gotohp_email: ''
+        source_path: '', album_name: '', cron: '', gotohp_threads: '', gotohp_recursive: '', gotohp_force: '',
+        gotohp_delete: '', gotohp_disable_filter: '', gotohp_date_from_filename: '', gotohp_log_level: '', gotohp_creds: '', gotohp_email: ''
       });
-      pairsByIndex.get(idx)[field] = value;
-      continue;
+      pairsByIndex.get(idx)[field] = value; continue;
     }
-
-    if (cfgKnownBaseKeys.includes(key)) {
-      base[key] = value;
-    } else {
-      extra[key] = value;
-    }
+    if (cfgKnownBaseKeys.includes(key)) base[key] = value; else extra[key] = value;
   }
-
-  const pairs = Array.from(pairsByIndex.entries())
-    .sort((a, b) => a[0] - b[0])
+  const pairs = Array.from(pairsByIndex.entries()).sort((a, b) => a[0] - b[0])
     .filter(([, pair]) => Object.values(pair).some(v => String(v || '').trim() !== ''))
     .map(([origIdx, pair]) => ({ ...pair, _origIdx: origIdx }));
-
   return { base, extra, pairs };
 }
 
 function buildConfigTextFromState() {
   const out = [];
   for (const key of cfgKnownBaseKeys) {
-    if (cfgState.base[key] !== undefined && cfgState.base[key] !== '') {
-      out.push(`${key}=${cfgState.base[key]}`);
-    }
+    if (cfgState.base[key] !== undefined && cfgState.base[key] !== '') out.push(`${key}=${cfgState.base[key]}`);
   }
-
   cfgState.pairs.forEach((pair, arrayIdx) => {
-    // Preserve the original pair index (e.g. SOURCE_PATH_4) so that saving
-    // never silently renumbers keys or drops non-contiguous pairs.
     const idx = (pair._origIdx !== undefined) ? pair._origIdx : arrayIdx;
     const pairEntries = [
-      ['SOURCE_PATH', pair.source_path],
-      ['ALBUM_NAME', pair.album_name],
-      ['CRON', pair.cron],
-      ['GOTOHP_THREADS', pair.gotohp_threads],
-      ['GOTOHP_RECURSIVE', pair.gotohp_recursive],
-      ['GOTOHP_FORCE', pair.gotohp_force],
-      ['GOTOHP_DELETE', pair.gotohp_delete],
-      ['GOTOHP_DISABLE_FILTER', pair.gotohp_disable_filter],
-      ['GOTOHP_DATE_FROM_FILENAME', pair.gotohp_date_from_filename],
-      ['GOTOHP_LOG_LEVEL', pair.gotohp_log_level],
-      ['GOTOHP_CREDS', pair.gotohp_creds],
-      ['GOTOHP_EMAIL', pair.gotohp_email]
+      ['SOURCE_PATH', pair.source_path], ['ALBUM_NAME', pair.album_name], ['CRON', pair.cron],
+      ['GOTOHP_THREADS', pair.gotohp_threads], ['GOTOHP_RECURSIVE', pair.gotohp_recursive], ['GOTOHP_FORCE', pair.gotohp_force],
+      ['GOTOHP_DELETE', pair.gotohp_delete], ['GOTOHP_DISABLE_FILTER', pair.gotohp_disable_filter],
+      ['GOTOHP_DATE_FROM_FILENAME', pair.gotohp_date_from_filename], ['GOTOHP_LOG_LEVEL', pair.gotohp_log_level],
+      ['GOTOHP_CREDS', pair.gotohp_creds], ['GOTOHP_EMAIL', pair.gotohp_email]
     ];
-    for (const [k, v] of pairEntries) {
-      if (String(v || '').trim() !== '') {
-        out.push(`${k}_${idx}=${v}`);
-      }
-    }
+    for (const [k, v] of pairEntries) if (String(v || '').trim() !== '') out.push(`${k}_${idx}=${v}`);
   });
-
   for (const key of Object.keys(cfgState.extra).sort()) {
-    if (String(cfgState.extra[key] || '').trim() !== '') {
-      out.push(`${key}=${cfgState.extra[key]}`);
-    }
+    if (String(cfgState.extra[key] || '').trim() !== '') out.push(`${key}=${cfgState.extra[key]}`);
   }
-
   return out.join('\n');
 }
 
 function renderConfigKPIs() {
-  const pairs = cfgState.pairs.length;
-  const sources = cfgState.pairs.filter(p => String(p.source_path || '').trim() !== '').length;
-  const albums = cfgState.pairs.filter(p => String(p.album_name || '').trim() !== '').length;
-  const cron = cfgState.pairs.filter(p => String(p.cron || '').trim() !== '').length;
-
-  document.getElementById('cfg-kpi-pairs').textContent = String(pairs);
-  document.getElementById('cfg-kpi-sources').textContent = String(sources);
-  document.getElementById('cfg-kpi-albums').textContent = String(albums);
-  document.getElementById('cfg-kpi-cron').textContent = String(cron);
+  document.getElementById('cfg-kpi-pairs').textContent = String(cfgState.pairs.length);
+  document.getElementById('cfg-kpi-sources').textContent = String(cfgState.pairs.filter(p => String(p.source_path || '').trim() !== '').length);
+  document.getElementById('cfg-kpi-albums').textContent = String(cfgState.pairs.filter(p => String(p.album_name || '').trim() !== '').length);
+  document.getElementById('cfg-kpi-cron').textContent = String(cfgState.pairs.filter(p => String(p.cron || '').trim() !== '').length);
 }
 
 function renderPairBuilder() {
   const root = document.getElementById('cfg-pair-list');
   if (!cfgState.pairs.length) {
-    root.innerHTML = '<div class="cfg-empty-note">No pairs yet. Add one to define source and target album mappings.</div>';
-    renderConfigKPIs();
-    return;
+    root.innerHTML = '<div class="empty-note">No pairs yet. Add one to define source and target album mappings.</div>';
+    renderConfigKPIs(); return;
   }
-
   root.innerHTML = cfgState.pairs.map((pair, arrayIdx) => {
     const origIdx = (pair._origIdx !== undefined) ? pair._origIdx : arrayIdx;
-    return `
-    <div class="cfg-pair-card" data-idx="${arrayIdx}">
-      <div class="cfg-pair-head">
-        <div class="cfg-pair-index">Pair ${origIdx}</div>
-        <button class="btn danger" data-action="remove-pair" data-idx="${arrayIdx}" type="button">Remove</button>
+    return `<div class="pair-card" data-idx="${arrayIdx}">
+      <div class="pair-head">
+        <div class="pair-index">Pair ${origIdx}</div>
+        <button class="btn text" data-action="remove-pair" data-idx="${arrayIdx}" type="button" style="color:var(--c-error)">Remove</button>
       </div>
-      <div class="cfg-row">
+      <div class="pair-row">
         <input data-field="source_path" data-idx="${arrayIdx}" placeholder="SOURCE_PATH_${origIdx}" value="${esc(pair.source_path || '')}">
         <input data-field="album_name" data-idx="${arrayIdx}" placeholder="ALBUM_NAME_${origIdx} (optional)" value="${esc(pair.album_name || '')}">
         <input data-field="cron" data-idx="${arrayIdx}" placeholder="CRON_${origIdx} (optional)" value="${esc(pair.cron || '')}">
       </div>
-      <div class="cfg-row" style="margin-top:0.45rem">
+      <div class="pair-row">
         <input data-field="gotohp_threads" data-idx="${arrayIdx}" placeholder="GOTOHP_THREADS_${origIdx}" value="${esc(pair.gotohp_threads || '')}">
-        <select data-field="gotohp_log_level" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_log_level || '', [['', 'GOTOHP_LOG_LEVEL_' + origIdx], ['debug', 'debug'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']])}
-        </select>
-        <select data-field="gotohp_recursive" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_recursive || '', [['', 'GOTOHP_RECURSIVE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
-        </select>
+        <select data-field="gotohp_log_level" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_log_level || '', [['', 'GOTOHP_LOG_LEVEL_' + origIdx], ['debug', 'debug'], ['info', 'info'], ['warn', 'warn'], ['error', 'error']])}</select>
+        <select data-field="gotohp_recursive" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_recursive || '', [['', 'GOTOHP_RECURSIVE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}</select>
       </div>
-      <div class="cfg-row" style="margin-top:0.45rem">
-        <select data-field="gotohp_force" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_force || '', [['', 'GOTOHP_FORCE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
-        </select>
-        <select data-field="gotohp_delete" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_delete || '', [['', 'GOTOHP_DELETE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
-        </select>
-        <select data-field="gotohp_disable_filter" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_disable_filter || '', [['', 'GOTOHP_DISABLE_FILTER_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
-        </select>
+      <div class="pair-row">
+        <select data-field="gotohp_force" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_force || '', [['', 'GOTOHP_FORCE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}</select>
+        <select data-field="gotohp_delete" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_delete || '', [['', 'GOTOHP_DELETE_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}</select>
+        <select data-field="gotohp_disable_filter" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_disable_filter || '', [['', 'GOTOHP_DISABLE_FILTER_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}</select>
       </div>
-      <div class="cfg-row" style="margin-top:0.45rem">
-        <select data-field="gotohp_date_from_filename" data-idx="${arrayIdx}">
-          ${renderSelectOptions(pair.gotohp_date_from_filename || '', [['', 'GOTOHP_DATE_FROM_FILENAME_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}
-        </select>
+      <div class="pair-row">
+        <select data-field="gotohp_date_from_filename" data-idx="${arrayIdx}">${renderSelectOptions(pair.gotohp_date_from_filename || '', [['', 'GOTOHP_DATE_FROM_FILENAME_' + origIdx], ['TRUE', 'TRUE'], ['FALSE', 'FALSE']])}</select>
         <input data-field="gotohp_email" data-idx="${arrayIdx}" placeholder="GOTOHP_EMAIL_${origIdx} (optional)" value="${esc(pair.gotohp_email || '')}">
         <input data-field="gotohp_creds" data-idx="${arrayIdx}" placeholder="GOTOHP_CREDS_${origIdx} (optional)" value="${esc(pair.gotohp_creds || '')}">
       </div>
-    </div>
-  `;
+    </div>`;
   }).join('');
 
   root.querySelectorAll('[data-field]').forEach(control => {
     const eventName = control.tagName === 'SELECT' ? 'change' : 'input';
     control.addEventListener(eventName, e => {
-      const idx = Number(e.target.dataset.idx);
-      const field = e.target.dataset.field;
-      cfgState.pairs[idx][field] = e.target.value;
+      cfgState.pairs[Number(e.target.dataset.idx)][e.target.dataset.field] = e.target.value;
       document.getElementById('cfg-editor').value = buildConfigTextFromState();
       renderConfigKPIs();
     });
   });
-
   root.querySelectorAll('button[data-action="remove-pair"]').forEach(btn => {
     btn.addEventListener('click', e => {
-      const idx = Number(e.target.dataset.idx);
-      cfgState.pairs.splice(idx, 1);
+      cfgState.pairs.splice(Number(e.currentTarget.dataset.idx), 1);
       document.getElementById('cfg-editor').value = buildConfigTextFromState();
       renderPairBuilder();
     });
   });
-
   renderConfigKPIs();
 }
 
 function syncBuilderFromEditor() {
   cfgState = parseConfigText(document.getElementById('cfg-editor').value);
-  renderBaseControls();
-  renderPairBuilder();
+  renderBaseControls(); renderPairBuilder();
 }
-
 function loadConfigTextIntoEditor(text) {
   document.getElementById('cfg-editor').value = text;
   syncBuilderFromEditor();
 }
 
 // ── apply status to all pages ─────────────────────────────────────────────────
+let lastStatus = null;
 function applyStatus(d) {
   lastStatus = d;
-  const p   = d.progress || {};
-  const rt  = d.runtime  || {};
-  const bk  = d.backup   || {};
-
-  // ── Overview: stat cards ──────────────────────────────────────────────────
-  document.getElementById('sc-state').innerHTML =
-    `<span class="pill ${pillClass(bk.state)}">${esc(bk.state||'UNKNOWN')}</span>`;
-  document.getElementById('sc-last-start').textContent = fmtDate(bk.last_start);
-  const ec = safe(bk.exit_code, '—');
-  document.getElementById('sc-exit').innerHTML =
-    `<span style="color:${ec==='0'?'var(--success)':ec==='—'?'inherit':'var(--danger)'}">${esc(ec)}</span>`;
-  document.getElementById('sc-host').textContent = safe(rt.hostname);
-
+  const p = d.progress || {}, rt = d.runtime || {}, bk = d.backup || {};
   const total = p.total_files || 0;
-  const done  = (p.completed || 0) + (p.failed || 0);
-  document.getElementById('sc-files').textContent =
-    total ? `${p.completed||0} / ${total}` + (p.failed ? ` (${p.failed} ✗)` : '') : '—';
-  document.getElementById('sc-bytes').textContent = p.bytes_uploaded ? fmtBytes(p.bytes_uploaded) : '—';
-  document.getElementById('sc-speed').textContent = fmtSpeed(p.speed_bytes_per_sec);
-  document.getElementById('sc-eta').textContent   = fmtETA(p.eta_seconds);
+  const done = (p.completed || 0) + (p.failed || 0);
+  const threads = p.threads || [];
 
-  // ── Overview: pills + progress bar ────────────────────────────────────────
-  const ovPill = document.getElementById('ov-state-pill');
-  ovPill.className = `pill ${pillClass(bk.state)}`;
-  ovPill.textContent = (bk.state || 'UNKNOWN').toUpperCase();
+  // ── State + manual chips ──
+  const stateChip = document.getElementById('state-chip');
+  stateChip.className = 'chip ' + stateChipClass(bk.state);
+  stateChip.innerHTML = `<span class="dot"></span>${esc((bk.state || 'UNKNOWN').toUpperCase())}`;
 
-  const manPill = document.getElementById('ov-manual-pill');
+  const manChip = document.getElementById('manual-chip');
   if (rt.manual_backup_running) {
-    manPill.className = 'pill running';
-    manPill.textContent = `MANUAL RUNNING (PID ${safe(rt.manual_backup_pid, '?')})`;
+    manChip.className = 'chip running';
+    manChip.innerHTML = `<span class="dot"></span>Manual running · PID ${esc(safe(rt.manual_backup_pid, '?'))}`;
   } else {
-    manPill.className = 'pill idle';
-    manPill.textContent = 'MANUAL IDLE';
+    manChip.className = 'chip';
+    manChip.textContent = 'Manual idle';
   }
 
-  // Album badge
-  const albumBadge = document.getElementById('ov-album-badge');
-  const albumText  = document.getElementById('ov-album-text');
+  // ── Album chip ──
+  const albumChip = document.getElementById('album-chip');
   if (p.album && p.album.name) {
-    albumBadge.style.display = '';
     const a = p.album;
-    if (a.error) {
-      albumText.textContent = `Album error: ${a.name}`;
-    } else if (a.complete) {
-      albumText.textContent = `Album complete: ${a.name} (${a.items_added} items)`;
-    } else {
-      albumText.textContent = `Album: ${a.name} (${a.items_added}/${a.total_items})`;
-    }
-  } else {
-    albumBadge.style.display = 'none';
-  }
+    albumChip.hidden = false;
+    if (a.error) albumChip.textContent = `Album error: ${a.name}`;
+    else if (a.complete) albumChip.textContent = `Album ✓ ${a.name} (${a.items_added})`;
+    else albumChip.textContent = `Album: ${a.name} (${a.items_added}/${a.total_items})`;
+  } else albumChip.hidden = true;
 
-  // Progress bar
+  // ── Hero: featured current transfer ──
+  const featured = threads.find(t => (t.status || '').toLowerCase() === 'uploading' && t.file_path)
+    || threads.find(t => t.file_path) || null;
+  updateHero(featured);
+
+  // ── Overall progress + meta ──
   let pct = 0;
-  if (total > 0) {
-    pct = (done / total) * 100;
-    if (p.state === 'running' && pct >= 100) pct = 99;
-    if (p.state === 'complete') pct = 100;
-  }
-  const fill = document.getElementById('ov-prog-fill');
-  fill.style.width = pct + '%';
-  fill.className = 'prog-fill' + (p.failed > 0 ? ' error' : '');
+  if (total > 0) { pct = (done / total) * 100; if (p.state === 'running' && pct >= 100) pct = 99; if (p.state === 'complete') pct = 100; }
+  const bar = document.getElementById('overall-bar');
+  bar.style.width = pct + '%';
+  bar.className = 'progress-bar' + (p.failed > 0 ? ' error' : '');
 
-  let meta = 'No active upload.';
+  let meta = 'Idle — press Run now to start a manual backup.';
   if (p.state === 'running' || (total > 0 && done < total)) {
     meta = `${done} / ${total} files`;
     if (p.bytes_uploaded) meta += ` · ${fmtBytes(p.bytes_uploaded)}`;
     if (p.speed_bytes_per_sec > 0) meta += ` · ${fmtSpeed(p.speed_bytes_per_sec)}`;
     if (p.eta_seconds > 0) meta += ` · ETA ${fmtETA(p.eta_seconds)}`;
   } else if (p.state === 'complete') {
-    meta = `Done: ${p.completed||0} ok, ${p.failed||0} failed · ${fmtBytes(p.bytes_uploaded||0)}`;
+    meta = `Done — ${p.completed || 0} ok, ${p.failed || 0} failed · ${fmtBytes(p.bytes_uploaded || 0)}`;
   } else if (p.state === 'cancelled') {
-    meta = `Cancelled after ${p.completed||0} ok, ${p.failed||0} failed`;
+    meta = `Cancelled after ${p.completed || 0} ok, ${p.failed || 0} failed`;
   }
-  document.getElementById('ov-prog-meta').textContent = meta;
+  document.getElementById('hero-meta').textContent = meta;
+  if (!featured) document.getElementById('hero-file').textContent =
+    p.state === 'complete' ? 'Upload complete' : (p.state === 'cancelled' ? 'Upload cancelled' : 'No active upload');
 
-  // ── Transfers table ───────────────────────────────────────────────────────
-  const threads = p.threads || [];
+  // ── Stat tiles ──
+  document.getElementById('st-files').textContent = total ? `${p.completed || 0} / ${total}` + (p.failed ? ` (${p.failed}✗)` : '') : '—';
+  document.getElementById('st-bytes').textContent = p.bytes_uploaded ? fmtBytes(p.bytes_uploaded) : '—';
+  document.getElementById('st-speed').textContent = fmtSpeed(p.speed_bytes_per_sec);
+  document.getElementById('st-eta').textContent = fmtETA(p.eta_seconds);
+
+  // ── Worker cards (overview) ──
+  const grid = document.getElementById('worker-grid');
+  if (threads.length === 0) {
+    grid.innerHTML = '<div class="empty">No active transfers.</div>';
+  } else {
+    grid.innerHTML = threads.map(t => {
+      const wpct = t.bytes_total > 0 ? Math.min(100, (t.bytes_uploaded / t.bytes_total) * 100) : 0;
+      const isImg = isImagePath(t.file_path);
+      const thumb = isImg
+        ? `<div class="worker-thumb has-img"><img src="${esc(thumbURL(t.file_path))}" alt="" loading="lazy" onerror="this.closest('.worker-thumb').classList.add('failed')"><span class="wbadge">#${esc(t.worker_id)}</span><div class="placeholder"><svg class="ic"><use href="#ic-image"/></svg></div></div>`
+        : `<div class="worker-thumb"><span class="wbadge">#${esc(t.worker_id)}</span><div class="placeholder"><svg class="ic"><use href="#ic-movie"/></svg></div></div>`;
+      return `<div class="worker">
+        ${thumb}
+        <div class="worker-body">
+          <div class="worker-name" title="${esc(t.file_path || '')}">${esc(t.file_name || t.file_path || '—')}</div>
+          <div class="progress" style="height:6px"><div class="progress-bar" style="width:${wpct.toFixed(1)}%"></div></div>
+          <div class="worker-foot">
+            ${statusBadge(t.status)}
+            <span>${t.bytes_total > 0 ? fmtBytes(t.bytes_uploaded) + ' / ' + fmtBytes(t.bytes_total) : fmtBytes(t.bytes_uploaded)}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Transfers table ──
   const tbody = document.getElementById('transfers-body');
   if (threads.length === 0) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No active transfers.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No active transfers.</div></td></tr>';
   } else {
     tbody.innerHTML = threads.map(t => {
-      const pct = t.bytes_total > 0 ? Math.min(100, (t.bytes_uploaded / t.bytes_total) * 100) : 0;
+      const wpct = t.bytes_total > 0 ? Math.min(100, (t.bytes_uploaded / t.bytes_total) * 100) : 0;
+      const thumb = isImagePath(t.file_path)
+        ? `<img class="row-thumb" src="${esc(thumbURL(t.file_path))}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'row-thumb-ph\\'><svg class=\\'ic ic-sm\\'><use href=\\'#ic-image\\'/></svg></div>'">`
+        : `<div class="row-thumb-ph"><svg class="ic ic-sm"><use href="#ic-movie"/></svg></div>`;
       return `<tr>
-        <td>${t.worker_id}</td>
-        <td><span class="fname" title="${esc(t.file_path)}">${esc(t.file_name||t.file_path||'—')}</span></td>
+        <td>${thumb}</td>
+        <td><span class="fname" title="${esc(t.file_path || '')}">${esc(t.file_name || t.file_path || '—')}</span></td>
         <td>${statusBadge(t.status)}</td>
-        <td class="bytes-bar">
-          <div class="bytes-track"><div class="bytes-fill" style="width:${pct.toFixed(1)}%"></div></div>
-          <div style="font-size:0.72rem;color:var(--muted);margin-top:2px">${pct.toFixed(0)}%</div>
-        </td>
-        <td style="white-space:nowrap">${t.bytes_total > 0 ? fmtBytes(t.bytes_uploaded)+' / '+fmtBytes(t.bytes_total) : fmtBytes(t.bytes_uploaded)}</td>
-        <td>${t.attempt || 0}</td>
+        <td><div class="mini-bar"><div style="width:${wpct.toFixed(1)}%"></div></div><div class="muted" style="font-size:11px;margin-top:3px">${wpct.toFixed(0)}%</div></td>
+        <td style="white-space:nowrap">${t.bytes_total > 0 ? fmtBytes(t.bytes_uploaded) + ' / ' + fmtBytes(t.bytes_total) : fmtBytes(t.bytes_uploaded)}</td>
+        <td>${esc(t.attempt || 0)}</td>
       </tr>`;
     }).join('');
   }
 
-  // ── History table ─────────────────────────────────────────────────────────
+  // ── History table ──
   const results = (p.recent_results || []).slice().reverse();
   const hbody = document.getElementById('history-body');
   if (results.length === 0) {
-    hbody.innerHTML = '<tr class="empty-row"><td colspan="4">No file results yet.</td></tr>';
+    hbody.innerHTML = '<tr><td colspan="5"><div class="empty">No file results yet.</div></td></tr>';
   } else {
-    hbody.innerHTML = results.map(r => `<tr>
-      <td>${r.success
-        ? '<span class="res-ok">&#10003; OK</span>'
-        : '<span class="res-err">&#10007; Error</span>'}</td>
-      <td><span class="fname" title="${esc(r.path)}">${esc(r.file_name||r.path||'?')}</span>${r.error ? `<br><small style="color:var(--danger)">${esc(r.error)}</small>` : ''}</td>
-      <td><span class="res-key" title="${esc(r.media_key||'')}">${esc(r.media_key||'—')}</span></td>
-      <td style="white-space:nowrap;color:var(--muted)">${fmtDate(r.timestamp)}</td>
-    </tr>`).join('');
+    hbody.innerHTML = results.map(r => {
+      const thumb = isImagePath(r.path)
+        ? `<img class="row-thumb" src="${esc(thumbURL(r.path))}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'row-thumb-ph\\'><svg class=\\'ic ic-sm\\'><use href=\\'#ic-image\\'/></svg></div>'">`
+        : `<div class="row-thumb-ph"><svg class="ic ic-sm"><use href="#ic-movie"/></svg></div>`;
+      return `<tr>
+        <td>${thumb}</td>
+        <td><span class="fname" title="${esc(r.path)}">${esc(r.file_name || r.path || '?')}</span>${r.error ? `<br><small class="res-err">${esc(r.error)}</small>` : ''}</td>
+        <td>${r.success ? '<span class="res-ok">✓ OK</span>' : '<span class="res-err">✗ Error</span>'}</td>
+        <td><span class="res-key" title="${esc(r.media_key || '')}">${esc(r.media_key || '—')}</span></td>
+        <td class="muted" style="white-space:nowrap">${fmtDate(r.timestamp)}</td>
+      </tr>`;
+    }).join('');
   }
 
-  // ── Schedule ──────────────────────────────────────────────────────────────
+  // ── Schedule ──
   const entries = (d.cron && d.cron.entries) || [];
   document.getElementById('cron-list').textContent = entries.length ? entries.join('\n') : 'No cron entries.';
   document.getElementById('pair-scope').textContent = safe(bk.pair_indices, 'ALL');
 
-  // ── Config source ─────────────────────────────────────────────────────────
+  // ── Config source ──
   const cfgRequested = safe(rt.config_source_requested, 'ENV');
   const cfgEffective = safe(rt.config_source_effective, cfgRequested);
-  const cfgExists = !!rt.config_file_exists;
   let cfgText = `${cfgEffective}`;
-  if (cfgRequested !== cfgEffective) {
-    cfgText += ` (requested ${cfgRequested})`;
-  }
-  if (cfgEffective === 'DOTENV' && cfgExists) {
-    cfgText += ' - /.env takes precedence when non-empty';
-  } else if (!cfgExists) {
-    cfgText += ' - /.env missing';
-  }
+  if (cfgRequested !== cfgEffective) cfgText += ` (requested ${cfgRequested})`;
+  if (cfgEffective === 'DOTENV' && rt.config_file_exists) cfgText += ' — /.env takes precedence when non-empty';
+  else if (!rt.config_file_exists) cfgText += ' — /.env missing';
   document.getElementById('cfg-source').textContent = cfgText;
 
-  // ── Log ───────────────────────────────────────────────────────────────────
+  // ── Log ──
   document.getElementById('log-output').textContent = cleanLogText(safe(d.manual_backup_log_tail, 'No manual backup log yet.'));
 }
 
@@ -1113,111 +1101,70 @@ async function refreshStatus() {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   applyStatus(await res.json());
 }
-
 async function loadConfig() {
   const res = await fetch('/api/config', { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   loadConfigTextIntoEditor(await res.text());
   document.getElementById('cfg-result').textContent = 'Config loaded.';
 }
-
 async function saveConfig() {
   document.getElementById('cfg-result').textContent = 'Saving…';
-  const res = await fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    body: document.getElementById('cfg-editor').value
-  });
+  const res = await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' }, body: document.getElementById('cfg-editor').value });
   document.getElementById('cfg-result').textContent = await res.text();
   refreshStatus().catch(() => {});
 }
-
 async function switchToDotenvSource() {
   document.getElementById('cfg-result').textContent = 'Switching config source to DOTENV...';
-  const res = await fetch('/api/config-source', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify({ mode: 'DOTENV' })
-  });
+  const res = await fetch('/api/config-source', { method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify({ mode: 'DOTENV' }) });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = body.message || `Failed to switch source (HTTP ${res.status})`;
-    document.getElementById('cfg-result').textContent = msg;
-    toast(msg);
-    return;
-  }
-  const msg = body.message || 'Config source switched to DOTENV.';
-  document.getElementById('cfg-result').textContent = msg;
-  toast(msg);
-  await Promise.allSettled([refreshStatus(), loadConfig()]);
+  const msg = body.message || (res.ok ? 'Config source switched to DOTENV.' : `Failed to switch source (HTTP ${res.status})`);
+  document.getElementById('cfg-result').textContent = msg; snack(msg);
+  if (res.ok) await Promise.allSettled([refreshStatus(), loadConfig()]);
 }
-
 async function runNow() {
-  toast('Starting manual backup…');
+  snack('Starting manual backup…');
   const res = await fetch('/api/run', { method: 'POST', cache: 'no-store' });
   const body = await res.json().catch(() => ({}));
-  toast(body.message || (res.ok ? 'Started.' : 'Error starting backup.'));
+  snack(body.message || (res.ok ? 'Started.' : 'Error starting backup.'));
   await refreshStatus();
 }
-
 async function cancelNow() {
-  toast('Sending cancel signal…');
+  snack('Sending cancel signal…');
   const res = await fetch('/api/cancel', { method: 'POST', cache: 'no-store' });
   const body = await res.json().catch(() => ({}));
-  toast(body.message || (res.ok ? 'Cancelled.' : 'Error cancelling.'));
+  snack(body.message || (res.ok ? 'Cancelled.' : 'Error cancelling.'));
   await refreshStatus();
 }
 
 // ── wire buttons ──────────────────────────────────────────────────────────────
-document.getElementById('btn-refresh').addEventListener('click', () => {
-  refreshStatus().then(() => toast('Refreshed.')).catch(e => toast('Refresh failed: ' + e));
-});
+document.getElementById('btn-refresh').addEventListener('click', () => refreshStatus().then(() => snack('Refreshed.')).catch(e => snack('Refresh failed: ' + e)));
 document.getElementById('btn-run').addEventListener('click', runNow);
 document.getElementById('btn-cancel').addEventListener('click', cancelNow);
-document.getElementById('btn-refresh-log').addEventListener('click', () => {
-  refreshStatus().catch(() => {});
-});
-document.getElementById('btn-load-cfg').addEventListener('click', () => {
-  loadConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
-});
-document.getElementById('btn-save-cfg').addEventListener('click', () => {
-  saveConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
-});
-document.getElementById('btn-switch-dotenv').addEventListener('click', () => {
-  switchToDotenvSource().catch(e => { document.getElementById('cfg-result').textContent = String(e); });
-});
+document.getElementById('btn-load-cfg').addEventListener('click', () => loadConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); }));
+document.getElementById('btn-save-cfg').addEventListener('click', () => saveConfig().catch(e => { document.getElementById('cfg-result').textContent = String(e); }));
+document.getElementById('btn-switch-dotenv').addEventListener('click', () => switchToDotenvSource().catch(e => { document.getElementById('cfg-result').textContent = String(e); }));
 document.getElementById('btn-add-pair').addEventListener('click', () => {
   const maxIdx = cfgState.pairs.reduce((m, p) => Math.max(m, p._origIdx !== undefined ? p._origIdx : -1), -1);
   cfgState.pairs.push({
-    _origIdx: maxIdx + 1,
-    source_path: '', album_name: '', cron: '',
-    gotohp_threads: '', gotohp_recursive: '', gotohp_force: '', gotohp_delete: '',
-    gotohp_disable_filter: '', gotohp_date_from_filename: '', gotohp_log_level: '',
-    gotohp_creds: '', gotohp_email: ''
+    _origIdx: maxIdx + 1, source_path: '', album_name: '', cron: '', gotohp_threads: '', gotohp_recursive: '',
+    gotohp_force: '', gotohp_delete: '', gotohp_disable_filter: '', gotohp_date_from_filename: '', gotohp_log_level: '', gotohp_creds: '', gotohp_email: ''
   });
   document.getElementById('cfg-editor').value = buildConfigTextFromState();
   renderPairBuilder();
 });
-document.getElementById('cfg-editor').addEventListener('input', () => {
-  syncBuilderFromEditor();
-});
+document.getElementById('cfg-editor').addEventListener('input', syncBuilderFromEditor);
 
 // ── polling ───────────────────────────────────────────────────────────────────
-// Fast (3 s) while a transfer is running, slow (10 s) otherwise.
 let pollTimer;
 function schedulePoll() {
   clearTimeout(pollTimer);
   const fast = lastStatus && lastStatus.progress && lastStatus.progress.state === 'running';
-  pollTimer = setTimeout(() => {
-    refreshStatus().catch(() => {}).finally(schedulePoll);
-  }, fast ? 3000 : 10000);
+  pollTimer = setTimeout(() => { refreshStatus().catch(() => {}).finally(schedulePoll); }, fast ? 3000 : 10000);
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────────
-Promise.all([
-  refreshStatus(),
-  loadConfig()
-]).catch(() => {}).finally(() => {
+initAppearance();
+Promise.all([refreshStatus(), loadConfig()]).catch(() => {}).finally(() => {
   syncBuilderFromEditor();
   schedulePoll();
 });

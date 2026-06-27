@@ -9,7 +9,7 @@ Content-Transfer-Encoding: 8bit
 
 ---
  cli_shared.go   |  19 ++
- webui_server.go | 482 ++++++++++++++++++++++++++++++++++++++++++++++++
+ webui_server.go | 672 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
  2 files changed, 501 insertions(+)
  create mode 100644 webui_server.go
 
@@ -55,7 +55,7 @@ new file mode 100644
 index 0000000..d33e57a
 --- /dev/null
 +++ b/webui_server.go
-@@ -0,0 +1,575 @@
+@@ -0,0 +1,672 @@
 +//go:build cli
 +
 +package main
@@ -178,6 +178,7 @@ index 0000000..d33e57a
 +	mux.HandleFunc("/api/cancel", srv.handleCancel)
 +	mux.HandleFunc("/api/config", srv.handleConfig)
 +	mux.HandleFunc("/api/config-source", srv.handleConfigSource)
++	mux.HandleFunc("/api/thumb", srv.handleThumb)
 +
 +	addr := net.JoinHostPort(bindAddr, port)
 +	server := &http.Server{
@@ -467,6 +468,102 @@ index 0000000..d33e57a
 +	default:
 +		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 +	}
++}
++
++// handleThumb serves an image preview of a file that is currently being
++// transferred. To avoid becoming an arbitrary file-read primitive, it only
++// serves paths that appear in the live progress file (active threads or recent
++// results) and only for known image extensions. Browsers that cannot decode a
++// given format (HEIC/TIFF) simply fall back to the UI placeholder.
++func (s *webuiServer) handleThumb(w http.ResponseWriter, r *http.Request) {
++	if r.Method != http.MethodGet {
++		jsonError(w, "Method Not Allowed", http.StatusMethodNotAllowed)
++		return
++	}
++	reqPath := r.URL.Query().Get("path")
++	if reqPath == "" {
++		http.Error(w, "missing path", http.StatusBadRequest)
++		return
++	}
++	if !s.pathInProgress(reqPath) {
++		http.Error(w, "forbidden", http.StatusForbidden)
++		return
++	}
++	contentType, ok := imageContentType(reqPath)
++	if !ok {
++		http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
++		return
++	}
++	f, err := os.Open(reqPath)
++	if err != nil {
++		http.Error(w, "not found", http.StatusNotFound)
++		return
++	}
++	defer f.Close()
++	fi, err := f.Stat()
++	if err != nil || fi.IsDir() {
++		http.Error(w, "not found", http.StatusNotFound)
++		return
++	}
++	w.Header().Set("Content-Type", contentType)
++	w.Header().Set("Cache-Control", "private, max-age=86400")
++	http.ServeContent(w, r, filepath.Base(reqPath), fi.ModTime(), f)
++}
++
++// pathInProgress reports whether path is referenced by the current progress
++// file, i.e. it is being uploaded right now or was a recent result.
++func (s *webuiServer) pathInProgress(path string) bool {
++	data, err := os.ReadFile(s.progressFile)
++	if err != nil {
++		return false
++	}
++	var ps struct {
++		Threads []struct {
++			FilePath string `json:"file_path"`
++		} `json:"threads"`
++		RecentResults []struct {
++			Path string `json:"path"`
++		} `json:"recent_results"`
++	}
++	if err := json.Unmarshal(data, &ps); err != nil {
++		return false
++	}
++	for _, t := range ps.Threads {
++		if t.FilePath == path {
++			return true
++		}
++	}
++	for _, rr := range ps.RecentResults {
++		if rr.Path == path {
++			return true
++		}
++	}
++	return false
++}
++
++// imageContentType maps a file extension to a browser-friendly image MIME type.
++func imageContentType(path string) (string, bool) {
++	switch strings.ToLower(filepath.Ext(path)) {
++	case ".jpg", ".jpeg":
++		return "image/jpeg", true
++	case ".png":
++		return "image/png", true
++	case ".gif":
++		return "image/gif", true
++	case ".webp":
++		return "image/webp", true
++	case ".bmp":
++		return "image/bmp", true
++	case ".heic":
++		return "image/heic", true
++	case ".heif":
++		return "image/heif", true
++	case ".avif":
++		return "image/avif", true
++	case ".tif", ".tiff":
++		return "image/tiff", true
++	}
++	return "", false
 +}
 +
 +// ── helpers ───────────────────────────────────────────────────────────────────
