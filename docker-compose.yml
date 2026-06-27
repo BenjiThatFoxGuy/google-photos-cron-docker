@@ -28,6 +28,7 @@ services:
       GOTOHP_DISABLE_FILTER: "FALSE"        # upload all file types (not just media)
       GOTOHP_DATE_FROM_FILENAME: "FALSE"    # parse date from filename
       GOTOHP_EXCLUDE: ""               # skip dirs matching this name (e.g. @eaDir)
+      GOTOHP_SKIP_UNCHANGED: "FALSE"   # opt-in: skip source trees unchanged since last successful run
       GOTOHP_LOG_LEVEL: "info"      # debug | info | warn | error
 
       # Optional experimental web UI (auto-enabled if WEBUI_BIND or WEBUI_PORT is set)

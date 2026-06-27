@@ -35,6 +35,11 @@ HANG_TEST_TIMEOUT=10
 #   $6  email for pair 1 override (optional; default: "")
 #   $7  global GOTOHP_EMAIL value (optional; default: "")
 #   $8  CRON_OVERLAP value (optional; default: "QUEUE")
+#   $9  global GOTOHP_EXCLUDE value (optional; default: "")
+#   $10 global GOTOHP_SKIP_UNCHANGED value (optional; default: "FALSE")
+#   $11 GOTOHP_SKIP_UNCHANGED_STATE_DIR value (optional; default: test-local)
+#   $12 skip-unchanged pair 0 override (optional; default: "")
+#   $13 skip-unchanged pair 1 override (optional; default: "")
 ########################################
 setup_env() {
     local test_name="$1"
@@ -45,8 +50,13 @@ setup_env() {
     local pair1_email="${6:-}"
     local global_email="${7:-}"
     local cron_overlap="${8:-QUEUE}"
+    local gotohp_exclude="${9:-}"
+    local skip_unchanged="${10:-FALSE}"
 
     local env_dir="${SCRATCH}/${test_name}"
+    local skip_unchanged_state_dir="${11:-${env_dir}/config/skip-unchanged}"
+    local pair0_skip_unchanged="${12:-}"
+    local pair1_skip_unchanged="${13:-}"
     mkdir -p "${env_dir}/bin" "${env_dir}/app"
 
     GOTOHP_CALLS="${env_dir}/gotohp_calls.txt"
@@ -83,6 +93,8 @@ function init_env() {
     GOTOHP_DELETE_LIST=("" "")
     GOTOHP_DISABLE_FILTER_LIST=("" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "")
+    GOTOHP_EXCLUDE_LIST=("" "")
+    GOTOHP_SKIP_UNCHANGED_LIST=("${pair0_skip_unchanged}" "${pair1_skip_unchanged}")
     GOTOHP_LOG_LEVEL_LIST=("" "")
     GOTOHP_CREDS_LIST=("" "")
     GOTOHP_EMAIL_LIST=("${pair0_email}" "${pair1_email}")
@@ -93,6 +105,9 @@ function init_env() {
     GOTOHP_DELETE="FALSE"
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
+    GOTOHP_EXCLUDE="${gotohp_exclude}"
+    GOTOHP_SKIP_UNCHANGED="${skip_unchanged}"
+    GOTOHP_SKIP_UNCHANGED_STATE_DIR="${skip_unchanged_state_dir}"
     GOTOHP_LOG_LEVEL="info"
     GOTOHP_EMAIL="${global_email}"
     CRON_OVERLAP="${cron_overlap}"
@@ -582,6 +597,8 @@ function init_env() {
     GOTOHP_DELETE_LIST=("" "" "")
     GOTOHP_DISABLE_FILTER_LIST=("" "" "")
     GOTOHP_DATE_FROM_FILENAME_LIST=("" "" "")
+    GOTOHP_EXCLUDE_LIST=("" "" "")
+    GOTOHP_SKIP_UNCHANGED_LIST=("" "" "")
     GOTOHP_LOG_LEVEL_LIST=("" "" "")
     GOTOHP_CREDS_LIST=("" "" "")
     GOTOHP_EMAIL_LIST=("" "" "")
@@ -592,6 +609,9 @@ function init_env() {
     GOTOHP_DELETE="FALSE"
     GOTOHP_DISABLE_FILTER="FALSE"
     GOTOHP_DATE_FROM_FILENAME="FALSE"
+    GOTOHP_EXCLUDE=""
+    GOTOHP_SKIP_UNCHANGED="FALSE"
+    GOTOHP_SKIP_UNCHANGED_STATE_DIR="${env_dir}/config/skip-unchanged"
     GOTOHP_LOG_LEVEL="info"
     GOTOHP_EMAIL=""
     CRON_OVERLAP="${cron_overlap}"
@@ -846,6 +866,180 @@ if cron_is_interval_with_arg "0 2 * * *"; then
     fail "Test 28: cron_is_interval('0 2 * * *') should NOT be interval but was detected as one"
 else
     pass "Test 28: cron_is_interval('0 2 * * *') correctly identified as non-interval"
+fi
+
+########################################
+# Tests 29–34: GOTOHP_SKIP_UNCHANGED persistent tree fingerprints
+########################################
+echo "--- Tests 29–34: GOTOHP_SKIP_UNCHANGED behaviour ---"
+
+# Test 29: default disabled — repeated unchanged runs still invoke gotohp.
+EMPTY29="${SCRATCH}/t29_empty"
+FILES29="${SCRATCH}/t29_files"
+mkdir -p "${EMPTY29}" "${FILES29}"
+echo "photo" > "${FILES29}/photo.jpg"
+
+setup_env "t29" "${EMPTY29}" "${FILES29}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t29_run1.txt" 2>&1 || RC=$?
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t29_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES29}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 29: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t29_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+    pass "Test 29: skip-unchanged disabled by default — unchanged source uploaded twice"
+else
+    fail "Test 29: expected 2 uploads with skip-unchanged disabled, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t29_run1.txt"
+    cat "${SCRATCH}/t29_run2.txt"
+fi
+
+# Test 30: enabled — first run uploads, second unchanged run skips gotohp.
+EMPTY30="${SCRATCH}/t30_empty"
+FILES30="${SCRATCH}/t30_files"
+STATE30="${SCRATCH}/t30_state"
+mkdir -p "${EMPTY30}" "${FILES30}"
+echo "photo" > "${FILES30}/photo.jpg"
+
+setup_env "t30" "${EMPTY30}" "${FILES30}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE30}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t30_run1.txt" 2>&1 || RC=$?
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t30_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES30}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 30: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t30_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -ne 1 ]]; then
+    fail "Test 30: expected exactly 1 upload after second unchanged run, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t30_run1.txt"
+    cat "${SCRATCH}/t30_run2.txt"
+elif ! grep -q "Source tree unchanged" "${SCRATCH}/t30_run2.txt" 2>/dev/null; then
+    fail "Test 30: second run did not log unchanged skip"
+    cat "${SCRATCH}/t30_run2.txt"
+else
+    pass "Test 30: enabled skip-unchanged uploads once, then skips unchanged source"
+fi
+
+# Test 31: enabled — source metadata/content change triggers another upload.
+EMPTY31="${SCRATCH}/t31_empty"
+FILES31="${SCRATCH}/t31_files"
+STATE31="${SCRATCH}/t31_state"
+mkdir -p "${EMPTY31}" "${FILES31}"
+echo "photo" > "${FILES31}/photo.jpg"
+
+setup_env "t31" "${EMPTY31}" "${FILES31}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE31}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t31_run1.txt" 2>&1 || RC=$?
+sleep 1
+printf 'edited\n' >> "${FILES31}/photo.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t31_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES31}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 31: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t31_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+    pass "Test 31: changed source uploaded again"
+else
+    fail "Test 31: expected 2 uploads after source change, got ${UPLOAD_COUNT}"
+    cat "${SCRATCH}/t31_run1.txt"
+    cat "${SCRATCH}/t31_run2.txt"
+fi
+
+# Test 32: excluded directory changes do not affect skip-unchanged fingerprint.
+EMPTY32="${SCRATCH}/t32_empty"
+FILES32="${SCRATCH}/t32_files"
+STATE32="${SCRATCH}/t32_state"
+mkdir -p "${EMPTY32}" "${FILES32}/@eaDir"
+echo "photo" > "${FILES32}/photo.jpg"
+echo "cache" > "${FILES32}/@eaDir/cache.jpg"
+
+setup_env "t32" "${EMPTY32}" "${FILES32}" "TRUE" "" "" "" "QUEUE" "@eaDir" "TRUE" "${STATE32}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t32_run1.txt" 2>&1 || RC=$?
+sleep 1
+echo "changed cache" > "${FILES32}/@eaDir/cache2.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t32_run2.txt" 2>&1 || RC=$?
+UPLOAD_COUNT=$(grep -c "upload ${FILES32}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 32: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t32_run2.txt"
+elif [[ "${UPLOAD_COUNT}" -ne 1 ]]; then
+    fail "Test 32: excluded dir change should not trigger upload, got ${UPLOAD_COUNT} uploads"
+    cat "${SCRATCH}/t32_run1.txt"
+    cat "${SCRATCH}/t32_run2.txt"
+else
+    pass "Test 32: excluded directory changes ignored by fingerprint"
+fi
+
+# Test 33: failed gotohp run does not persist clean state; next run uploads again.
+EMPTY33="${SCRATCH}/t33_empty"
+FILES33="${SCRATCH}/t33_files"
+STATE33="${SCRATCH}/t33_state"
+mkdir -p "${EMPTY33}" "${FILES33}"
+echo "photo" > "${FILES33}/photo.jpg"
+
+setup_env "t33" "${EMPTY33}" "${FILES33}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE33}"
+cat > "${SCRATCH}/t33/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+if [[ "\$*" == upload* ]]; then
+    exit 1
+fi
+EOF
+chmod +x "${SCRATCH}/t33/bin/gotohp"
+
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t33_run1.txt" 2>&1 || RC=$?
+if [[ $RC -eq 0 ]]; then
+    fail "Test 33: first backup should fail when gotohp upload fails"
+    cat "${SCRATCH}/t33_run1.txt"
+else
+    cat > "${SCRATCH}/t33/bin/gotohp" << EOF
+#!/bin/bash
+echo "\$*" >> "${GOTOHP_CALLS}"
+EOF
+    chmod +x "${SCRATCH}/t33/bin/gotohp"
+    RC=0
+    PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t33_run2.txt" 2>&1 || RC=$?
+    UPLOAD_COUNT=$(grep -c "upload ${FILES33}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+    if [[ $RC -ne 0 ]]; then
+        fail "Test 33: second backup exited with code ${RC}"
+        cat "${SCRATCH}/t33_run2.txt"
+    elif [[ "${UPLOAD_COUNT}" -eq 2 ]]; then
+        pass "Test 33: failed run did not mark source clean; next run uploaded again"
+    else
+        fail "Test 33: expected failed run plus retry upload, got ${UPLOAD_COUNT} uploads"
+        cat "${SCRATCH}/t33_run1.txt"
+        cat "${SCRATCH}/t33_run2.txt"
+    fi
+fi
+
+# Test 34: multi-source — unchanged pair skips while changed pair uploads.
+FILES34_0="${SCRATCH}/t34_pair0"
+FILES34_1="${SCRATCH}/t34_pair1"
+STATE34="${SCRATCH}/t34_state"
+mkdir -p "${FILES34_0}" "${FILES34_1}"
+echo "photo" > "${FILES34_0}/photo.jpg"
+echo "photo" > "${FILES34_1}/photo.jpg"
+
+setup_env "t34" "${FILES34_0}" "${FILES34_1}" "TRUE" "" "" "" "QUEUE" "" "TRUE" "${STATE34}"
+RC=0
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t34_run1.txt" 2>&1 || RC=$?
+sleep 1
+printf 'edited\n' >> "${FILES34_1}/photo.jpg"
+PATH="${TEST_PATH}" bash "${TEST_BACKUP}" > "${SCRATCH}/t34_run2.txt" 2>&1 || RC=$?
+UPLOAD0_COUNT=$(grep -c "upload ${FILES34_0}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+UPLOAD1_COUNT=$(grep -c "upload ${FILES34_1}" "${GOTOHP_CALLS}" 2>/dev/null || true)
+if [[ $RC -ne 0 ]]; then
+    fail "Test 34: backup.sh exited with code ${RC}"
+    cat "${SCRATCH}/t34_run2.txt"
+elif [[ "${UPLOAD0_COUNT}" -eq 1 && "${UPLOAD1_COUNT}" -eq 2 ]]; then
+    pass "Test 34: unchanged pair skipped; changed pair uploaded"
+else
+    fail "Test 34: expected pair0=1 upload and pair1=2 uploads, got pair0=${UPLOAD0_COUNT}, pair1=${UPLOAD1_COUNT}"
+    cat "${SCRATCH}/t34_run1.txt"
+    cat "${SCRATCH}/t34_run2.txt"
 fi
 
 ########################################
