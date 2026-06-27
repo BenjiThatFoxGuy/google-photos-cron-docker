@@ -17,6 +17,7 @@ easy to adopt if you are already familiar with that project.
 - Per-pair schedule overrides (`CRON_N`) with automatic grouping
 - All `gotohp upload` flags exposed as environment variables
 - Per-pair overrides for any upload option (e.g. `GOTOHP_THREADS_0`)
+- Optional persistent skip-unchanged optimization to avoid rechecking unchanged source trees
 - Credentials stored in a Docker volume — survive container restarts
 - Secrets can be supplied via files (`_FILE` suffix) or a `.env` file
 - Optional experimental web UI for status and runtime overrides
@@ -161,7 +162,12 @@ the indexed form.  Both styles may be combined.
 | `GOTOHP_DELETE`             | `FALSE` | Delete source file after successful upload |
 | `GOTOHP_DISABLE_FILTER`     | `FALSE` | Upload all file types, not just media |
 | `GOTOHP_DATE_FROM_FILENAME` | `FALSE` | Parse media date from filename (e.g. `20240709_182027.jpg`) |
+| `GOTOHP_EXCLUDE`            | `""`    | Skip directories whose name matches this pattern during recursive walk (e.g. `@eaDir`) |
+| `GOTOHP_SKIP_UNCHANGED`     | `FALSE` | Skip calling gotohp for a source tree when its metadata fingerprint matches the previous successful run |
+| `GOTOHP_SKIP_UNCHANGED_STATE_DIR` | `/config/gotohp-wrapper/skip-unchanged/v1` | Persistent state directory for skip-unchanged fingerprints |
 | `GOTOHP_LOG_LEVEL`          | `info`  | Log verbosity: `debug`, `info`, `warn`, `error` |
+| `GOTOHP_PROGRESS_LOG_INTERVAL` | `60` | Seconds between Docker log progress summaries while gotohp is uploading; set `0` to disable |
+| `GOTOHP_UPLOAD_RAW_LOGS`    | `FALSE` | Pass raw gotohp TUI output through Docker logs; normally disabled to avoid blank-line/control-code spam |
 
 ### Per-pair upload option overrides
 
@@ -177,6 +183,8 @@ global value is used as the default.
 | `GOTOHP_DELETE_N`             | Override delete flag for pair N |
 | `GOTOHP_DISABLE_FILTER_N`     | Override disable-filter flag for pair N |
 | `GOTOHP_DATE_FROM_FILENAME_N` | Override date-from-filename flag for pair N |
+| `GOTOHP_EXCLUDE_N`            | Override exclude pattern for pair N |
+| `GOTOHP_SKIP_UNCHANGED_N`     | Override skip-unchanged optimization for pair N |
 | `GOTOHP_LOG_LEVEL_N`          | Override log level for pair N |
 
 Example — use more threads for the large camera roll but fewer for screenshots:
@@ -186,6 +194,52 @@ GOTOHP_THREADS: "3"        # default for all pairs
 GOTOHP_THREADS_0: "8"      # more threads for SOURCE_PATH_0 (e.g. camera roll)
 GOTOHP_THREADS_1: "1"      # fewer threads for SOURCE_PATH_1 (e.g. screenshots)
 ```
+
+### Skip unchanged source trees
+
+Set `GOTOHP_SKIP_UNCHANGED=TRUE` to make the wrapper skip `gotohp upload` for a
+source/album pair when the effective source tree has not changed since its last
+successful upload run. This avoids re-hashing unchanged files locally and avoids
+checking those files against Google Photos again.
+
+The first run after enabling the option uploads normally and stores a fingerprint
+under `/config/gotohp-wrapper/skip-unchanged/v1`. Later runs compare the current
+metadata fingerprint with that saved state. State is written only after the whole
+backup invocation succeeds, so failed or interrupted gotohp runs are not marked
+clean.
+
+The fingerprint includes file and directory paths, entry type, size, mtime,
+ctime, mode, owner, group, inode, and symlink target. It does not hash file
+contents, by design. Normal edits are detected because size and/or ctime changes;
+content hashing every run would defeat most of the optimization.
+
+`GOTOHP_EXCLUDE` and `GOTOHP_EXCLUDE_N` are respected during fingerprinting, so
+changes inside excluded directories do not trigger an upload. `GOTOHP_RECURSIVE`
+is also respected: non-recursive pairs only fingerprint the source root level.
+
+If effective `GOTOHP_FORCE=TRUE`, skip-unchanged will not skip that pair because
+force mode explicitly requests gotohp to run again.
+
+Example:
+
+```yaml
+GOTOHP_SKIP_UNCHANGED: "TRUE"      # default for all pairs
+GOTOHP_SKIP_UNCHANGED_1: "FALSE"   # always run gotohp for pair 1
+```
+
+### Docker log progress
+
+During each gotohp upload, the wrapper polls gotohp's progress JSON and writes a
+summary line to the Docker logs every `GOTOHP_PROGRESS_LOG_INTERVAL` seconds
+(default: 60). The line includes completed file count, total file count, failed
+file count, uploaded bytes, total bytes, gotohp state, and active worker status
+with current filenames. A final summary is also logged after each gotohp process
+exits.
+
+Set `GOTOHP_PROGRESS_LOG_INTERVAL=0` to disable these periodic wrapper log lines.
+Raw gotohp TUI output is suppressed by default because it emits terminal control
+codes and blank lines in Docker logs. Set `GOTOHP_UPLOAD_RAW_LOGS=TRUE` to pass
+that raw output through for debugging.
 
 ### Per-pair credential overrides
 
@@ -242,7 +296,7 @@ Variables can also be placed in a `/.env` file mounted into the container.
 
 | Mount point | Purpose |
 |-------------|---------|
-| `/config`   | Persists the gotohp credential store and settings across restarts |
+| `/config`   | Persists the gotohp credential store, settings, and optional skip-unchanged fingerprints across restarts |
 | Source dirs | Mount your photo directories here. If you enable [`GOTOHP_DELETE`](#upload-options) or [`GOTOHP_DELETE_N`](#per-pair-upload-option-overrides) to delete files after a successful upload, the mount **must be read-write**. If you are not using delete-after-upload, adding `:ro` to the mount is safe and recommended. |
 
 ---
@@ -260,6 +314,7 @@ services:
       GOTOHP_CREDS: "androidId=..."
       SOURCE_PATH: /photos
       ALBUM_NAME: "My Backup"
+      GOTOHP_SKIP_UNCHANGED: "TRUE"  # skip future runs while /photos is unchanged
       GOTOHP_DELETE: "TRUE"   # delete source file after a successful upload
     volumes:
       - /mnt/photos:/photos       # read-write required when GOTOHP_DELETE is enabled

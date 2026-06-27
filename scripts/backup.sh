@@ -52,6 +52,7 @@ function build_gotohp_flags() {
     GOTOHP_EFFECTIVE_DISABLE_FILTER="${DISABLE_FILTER}"
     local DATE_FROM_FILENAME
     DATE_FROM_FILENAME=$(echo "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]:-${GOTOHP_DATE_FROM_FILENAME}}" | tr '[:lower:]' '[:upper:]')
+    local EXCLUDE="${GOTOHP_EXCLUDE_LIST[${i}]:-${GOTOHP_EXCLUDE}}"
 
     GOTOHP_FLAGS+=("--threads" "${THREADS}")
     GOTOHP_FLAGS+=("--log-level" "${LOG_LEVEL}")
@@ -71,7 +72,179 @@ function build_gotohp_flags() {
     if [[ "${DATE_FROM_FILENAME}" == "TRUE" ]]; then
         GOTOHP_FLAGS+=("--date-from-filename")
     fi
+    if [[ -n "${EXCLUDE}" ]]; then
+        GOTOHP_FLAGS+=("--exclude" "${EXCLUDE}")
+    fi
 }
+
+########################################
+# Extract a simple top-level string field from gotohp's compact progress JSON.
+# Returns empty string if field not found. Validates JSON structure exists first.
+# Arguments:
+#     JSON content
+#     field name
+########################################
+function progress_json_string() {
+    local json="$1"
+    local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || return 0
+    local regex="\"${field}\":\"([^\"]*)\""
+    if [[ "${json}" =~ ${regex} ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    fi
+}
+
+########################################
+# Extract a simple top-level numeric field from gotohp's compact progress JSON.
+# Returns 0 if field not found. Validates JSON structure exists first.
+# Arguments:
+#     JSON content
+#     field name
+########################################
+function progress_json_number() {
+    local json="$1"
+    local field="$2"
+    [[ -n "${json}" && "${json:0:1}" == "{" ]] || { printf '0'; return 0; }
+    local regex="\"${field}\":([0-9]+(\.[0-9]+)?)"
+    if [[ "${json}" =~ ${regex} ]]; then
+        printf '%s' "${BASH_REMATCH[1]}"
+    else
+        printf '0'
+    fi
+}
+
+########################################
+# Build a compact worker summary from gotohp's progress JSON threads array.
+# This intentionally avoids raw Bubble Tea output while preserving the useful
+# TUI information: worker id, status, and current filename.
+# Arguments:
+#     JSON content
+########################################
+function progress_json_threads_summary() {
+    local json="$1"
+    local threads_json thread worker_id status file_name summary
+
+    threads_json="${json#*\"threads\":[}"
+    [[ "${threads_json}" == "${json}" ]] && return 0
+    threads_json="${threads_json%%],\"recent_results\"*}"
+    [[ -z "${threads_json}" || "${threads_json}" == "]" ]] && return 0
+
+    summary=""
+    while [[ "${threads_json}" =~ \{([^{}]*)\} ]]; do
+        thread="${BASH_REMATCH[1]}"
+        threads_json="${threads_json#*\}}"
+
+        worker_id="$(progress_json_number "{${thread}}" "worker_id")"
+        status="$(progress_json_string "{${thread}}" "status")"
+        file_name="$(progress_json_string "{${thread}}" "file_name")"
+        [[ -z "${status}" && -z "${file_name}" ]] && continue
+
+        if [[ -n "${summary}" ]]; then
+            summary="${summary}; "
+        fi
+        summary="${summary}[${worker_id}] ${status:-unknown}"
+        if [[ -n "${file_name}" ]]; then
+            summary="${summary}: ${file_name}"
+        fi
+    done
+
+    printf '%s' "${summary}"
+}
+
+########################################
+# Emit one Docker-log progress line from gotohp's progress JSON file.
+# Arguments:
+#     source path
+#     progress JSON file path
+#     label (optional; e.g. final)
+########################################
+function log_upload_progress() {
+    local source="$1"
+    local progress_file="$2"
+    local label="${3:-progress}"
+
+    [[ -r "${progress_file}" ]] || return 0
+
+    local progress_json state total completed failed bytes_uploaded total_bytes threads_summary
+    progress_json="$(<"${progress_file}")"
+    [[ -n "${progress_json}" ]] || return 0
+
+    state="$(progress_json_string "${progress_json}" "state")"
+    total="$(progress_json_number "${progress_json}" "total_files")"
+    completed="$(progress_json_number "${progress_json}" "completed")"
+    failed="$(progress_json_number "${progress_json}" "failed")"
+    bytes_uploaded="$(progress_json_number "${progress_json}" "bytes_uploaded")"
+    total_bytes="$(progress_json_number "${progress_json}" "total_bytes")"
+    threads_summary="$(progress_json_threads_summary "${progress_json}")"
+
+    if [[ "${state:-idle}" == "idle" && "${total}" == "0" && "${completed}" == "0" && "${failed}" == "0" ]]; then
+        return 0
+    fi
+
+    if [[ -n "${threads_summary}" && "${state:-unknown}" == "running" ]]; then
+        color blue "Upload ${label} $(color yellow "[${source}]"): ${completed}/${total} succeeded, ${failed} failed, ${bytes_uploaded}/${total_bytes} bytes uploaded (state: ${state:-unknown}) | workers: ${threads_summary}"
+    else
+        color blue "Upload ${label} $(color yellow "[${source}]"): ${completed}/${total} succeeded, ${failed} failed, ${bytes_uploaded}/${total_bytes} bytes uploaded (state: ${state:-unknown})"
+    fi
+}
+
+########################################
+# Run gotohp upload and periodically mirror progress JSON into Docker logs.
+# Uses unique temp files per invocation to avoid conflicts in concurrent scenarios.
+# Arguments:
+#     source path
+#     gotohp upload flags...
+########################################
+function run_gotohp_upload_with_progress() {
+    local source="$1"
+    shift
+
+    local interval="${GOTOHP_PROGRESS_LOG_INTERVAL:-60}"
+    if ! [[ "${interval}" =~ ^[0-9]+$ ]]; then
+        interval="60"
+    fi
+
+    local progress_file upload_log_file
+    progress_file=$(mktemp /tmp/gotohp-progress.XXXXXX.json) || progress_file="/tmp/gotohp-progress.$$.json"
+    upload_log_file=$(mktemp /tmp/gotohp-upload.XXXXXX.log) || upload_log_file="/tmp/gotohp-upload.$$.log"
+
+    if [[ "${interval}" == "0" ]]; then
+        if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
+            gotohp upload "${source}" "$@"
+        else
+            gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1
+        fi
+        rm -f "${progress_file}" "${upload_log_file}"
+        return $?
+    fi
+
+    local upload_pid elapsed rc
+
+    if [[ "${GOTOHP_UPLOAD_RAW_LOGS:-FALSE}" == "TRUE" ]]; then
+        gotohp upload "${source}" "$@" &
+    else
+        gotohp upload "${source}" "$@" >"${upload_log_file}" 2>&1 &
+    fi
+    upload_pid=$!
+    elapsed=0
+
+    while kill -0 "${upload_pid}" 2>/dev/null; do
+        sleep 1
+        elapsed=$((elapsed + 1))
+        if (( elapsed >= interval )); then
+            log_upload_progress "${source}" "${progress_file}"
+            elapsed=0
+        fi
+    done
+
+    wait "${upload_pid}"
+    rc=$?
+    log_upload_progress "${source}" "${progress_file}" "final"
+    rm -f "${progress_file}" "${upload_log_file}"
+    return ${rc}
+}
+
+exec >/proc/1/fd/1 2>&1
 
 color blue "Running backup at $(date +"%Y-%m-%d %H:%M:%S %Z")"
 
@@ -241,7 +414,7 @@ for i in "${INDICES_TO_PROCESS[@]}"; do
 
     color blue "Uploading $(color yellow "[${SOURCE}]") → album $(color yellow "[${ALBUM:-<library root>}]")"
 
-    gotohp upload "${SOURCE}" "${UPLOAD_FLAGS[@]}"
+    run_gotohp_upload_with_progress "${SOURCE}" "${UPLOAD_FLAGS[@]}"
 
     if [[ $? -ne 0 ]]; then
         color red "Upload failed for: ${SOURCE}"

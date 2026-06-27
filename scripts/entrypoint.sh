@@ -163,4 +163,4 @@ for cron_expr in "${!SCHEDULE_GROUPS[@]}"; do
 done
 
 color blue "Starting supercronic scheduler"
-exec supercronic -passthrough-logs -no-reap -quiet "${CRON_CONFIG_FILE}"
+exec supercronic -no-reap -quiet "${CRON_CONFIG_FILE}"

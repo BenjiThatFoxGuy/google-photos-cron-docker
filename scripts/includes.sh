@@ -153,6 +153,8 @@ function get_source_album_list() {
     GOTOHP_DELETE_LIST=()
     GOTOHP_DISABLE_FILTER_LIST=()
     GOTOHP_DATE_FROM_FILENAME_LIST=()
+    GOTOHP_EXCLUDE_LIST=()
+    GOTOHP_SKIP_UNCHANGED_LIST=()
     GOTOHP_LOG_LEVEL_LIST=()
     GOTOHP_CREDS_LIST=()
     GOTOHP_EMAIL_LIST=()
@@ -197,6 +199,8 @@ function get_source_album_list() {
         local DELETE_X="GOTOHP_DELETE_${i}"
         local DISABLE_FILTER_X="GOTOHP_DISABLE_FILTER_${i}"
         local DATE_FROM_FILENAME_X="GOTOHP_DATE_FROM_FILENAME_${i}"
+        local EXCLUDE_X="GOTOHP_EXCLUDE_${i}"
+        local SKIP_UNCHANGED_X="GOTOHP_SKIP_UNCHANGED_${i}"
         local LOG_LEVEL_X="GOTOHP_LOG_LEVEL_${i}"
         local CREDS_X="GOTOHP_CREDS_${i}"
         local EMAIL_X="GOTOHP_EMAIL_${i}"
@@ -208,6 +212,8 @@ function get_source_album_list() {
         get_env "${DELETE_X}"
         get_env "${DISABLE_FILTER_X}"
         get_env "${DATE_FROM_FILENAME_X}"
+        get_env "${EXCLUDE_X}"
+        get_env "${SKIP_UNCHANGED_X}"
         get_env "${LOG_LEVEL_X}"
         get_env "${CREDS_X}"
         get_env "${EMAIL_X}"
@@ -219,6 +225,8 @@ function get_source_album_list() {
         GOTOHP_DELETE_LIST+=("${!DELETE_X}")
         GOTOHP_DISABLE_FILTER_LIST+=("${!DISABLE_FILTER_X}")
         GOTOHP_DATE_FROM_FILENAME_LIST+=("${!DATE_FROM_FILENAME_X}")
+        GOTOHP_EXCLUDE_LIST+=("${!EXCLUDE_X}")
+        GOTOHP_SKIP_UNCHANGED_LIST+=("${!SKIP_UNCHANGED_X}")
         GOTOHP_LOG_LEVEL_LIST+=("${!LOG_LEVEL_X}")
         GOTOHP_CREDS_LIST+=("${!CREDS_X}")
         GOTOHP_EMAIL_LIST+=("${!EMAIL_X}")
@@ -301,9 +309,32 @@ function init_env() {
     get_env GOTOHP_DATE_FROM_FILENAME
     GOTOHP_DATE_FROM_FILENAME=$(echo "${GOTOHP_DATE_FROM_FILENAME:-"FALSE"}" | tr '[:lower:]' '[:upper:]')
 
+    # GOTOHP_EXCLUDE — skip directories matching this pattern during recursive walk (default: empty)
+    get_env GOTOHP_EXCLUDE
+    GOTOHP_EXCLUDE="${GOTOHP_EXCLUDE:-""}"
+
+    # GOTOHP_SKIP_UNCHANGED — skip gotohp when a source tree metadata fingerprint is unchanged (default: FALSE)
+    get_env GOTOHP_SKIP_UNCHANGED
+    GOTOHP_SKIP_UNCHANGED=$(echo "${GOTOHP_SKIP_UNCHANGED:-"FALSE"}" | tr '[:lower:]' '[:upper:]')
+
+    # GOTOHP_SKIP_UNCHANGED_STATE_DIR — persistent state directory for skip-unchanged fingerprints
+    get_env GOTOHP_SKIP_UNCHANGED_STATE_DIR
+    GOTOHP_SKIP_UNCHANGED_STATE_DIR="${GOTOHP_SKIP_UNCHANGED_STATE_DIR:-"/config/gotohp-wrapper/skip-unchanged/v1"}"
+
     # GOTOHP_LOG_LEVEL — log level: debug, info, warn, error (default: info)
     get_env GOTOHP_LOG_LEVEL
     GOTOHP_LOG_LEVEL="${GOTOHP_LOG_LEVEL:-"info"}"
+
+    # GOTOHP_PROGRESS_LOG_INTERVAL — seconds between Docker log progress lines; 0 disables
+    get_env GOTOHP_PROGRESS_LOG_INTERVAL
+    GOTOHP_PROGRESS_LOG_INTERVAL="${GOTOHP_PROGRESS_LOG_INTERVAL:-"60"}"
+    if ! [[ "${GOTOHP_PROGRESS_LOG_INTERVAL}" =~ ^[0-9]+$ ]]; then
+        GOTOHP_PROGRESS_LOG_INTERVAL="60"
+    fi
+
+    # GOTOHP_UPLOAD_RAW_LOGS — pass raw gotohp TUI output through Docker logs (default: FALSE)
+    get_env GOTOHP_UPLOAD_RAW_LOGS
+    GOTOHP_UPLOAD_RAW_LOGS=$(echo "${GOTOHP_UPLOAD_RAW_LOGS:-"FALSE"}" | tr '[:lower:]' '[:upper:]')
 
     # SOURCE_PATH / ALBUM_NAME — single-source shorthand aliases for _0 slots
     get_env SOURCE_PATH
@@ -325,7 +356,12 @@ function init_env() {
     color yellow "GOTOHP_DELETE: ${GOTOHP_DELETE}"
     color yellow "GOTOHP_DISABLE_FILTER: ${GOTOHP_DISABLE_FILTER}"
     color yellow "GOTOHP_DATE_FROM_FILENAME: ${GOTOHP_DATE_FROM_FILENAME}"
+    color yellow "GOTOHP_EXCLUDE: ${GOTOHP_EXCLUDE:-<none>}"
+    color yellow "GOTOHP_SKIP_UNCHANGED: ${GOTOHP_SKIP_UNCHANGED}"
+    color yellow "GOTOHP_SKIP_UNCHANGED_STATE_DIR: ${GOTOHP_SKIP_UNCHANGED_STATE_DIR}"
     color yellow "GOTOHP_LOG_LEVEL: ${GOTOHP_LOG_LEVEL}"
+    color yellow "GOTOHP_PROGRESS_LOG_INTERVAL: ${GOTOHP_PROGRESS_LOG_INTERVAL}"
+    color yellow "GOTOHP_UPLOAD_RAW_LOGS: ${GOTOHP_UPLOAD_RAW_LOGS}"
 
     for i in "${!SOURCE_PATHS[@]}"; do
         local ALB="${ALBUM_NAMES[${i}]:-<none>}"
@@ -336,6 +372,8 @@ function init_env() {
         [[ -n "${GOTOHP_DELETE_LIST[${i}]}" ]]             && color yellow "  GOTOHP_DELETE_${i}: ${GOTOHP_DELETE_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_DISABLE_FILTER_LIST[${i}]}" ]]     && color yellow "  GOTOHP_DISABLE_FILTER_${i}: ${GOTOHP_DISABLE_FILTER_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]}" ]] && color yellow "  GOTOHP_DATE_FROM_FILENAME_${i}: ${GOTOHP_DATE_FROM_FILENAME_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_EXCLUDE_LIST[${i}]}" ]]           && color yellow "  GOTOHP_EXCLUDE_${i}: ${GOTOHP_EXCLUDE_LIST[${i}]} (override)"
+        [[ -n "${GOTOHP_SKIP_UNCHANGED_LIST[${i}]}" ]]    && color yellow "  GOTOHP_SKIP_UNCHANGED_${i}: ${GOTOHP_SKIP_UNCHANGED_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_LOG_LEVEL_LIST[${i}]}" ]]          && color yellow "  GOTOHP_LOG_LEVEL_${i}: ${GOTOHP_LOG_LEVEL_LIST[${i}]} (override)"
         [[ -n "${GOTOHP_CREDS_LIST[${i}]}" ]]              && color yellow "  GOTOHP_CREDS_${i}: <set> (override)"
         [[ -n "${GOTOHP_EMAIL_LIST[${i}]}" ]]              && color yellow "  GOTOHP_EMAIL_${i}: ${GOTOHP_EMAIL_LIST[${i}]} (override)"
